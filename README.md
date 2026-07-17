@@ -1,0 +1,116 @@
+# gitferry
+
+**Portable git-change bundles for air-gapped repos.** Pack your unpushed commits, staged/unstaged changes, and untracked files into a single shareable file on one machine — carry it across the air gap (USB, secure file transfer, email) — validate and apply it to the same repo on another machine. No shared remote, no network, no sync required.
+
+```
+machine A (has your changes)          machine B (same repo, no sync)
+┌─────────────────────────┐           ┌─────────────────────────┐
+│ $ gitferry pack         │  ──────▶  │ $ gitferry apply        │
+│   → repo-main-a1b2c3d   │  USB /    │   ✓ checksums verified  │
+│     .gitferry           │  scp /    │   ✓ same repo confirmed │
+│                         │  email    │   ✓ 2 commits replayed  │
+│  commits + worktree     │           │   ✓ staged/unstaged     │
+│  + untracked, checksummed│          │     state restored      │
+└─────────────────────────┘           └─────────────────────────┘
+```
+
+See [SCENARIOS.md](SCENARIOS.md) for every situation this is built for — air-gapped environments, client-site work, WIP handoffs, offline review, and more. See [INSTALL.md](INSTALL.md) for offline installation on other devices.
+
+## Why not just `git format-patch` / `git bundle`?
+
+You can — gitferry *uses* them under the hood. What raw git doesn't give you:
+
+- **Untracked files travel too** (respecting `.gitignore`) — `git diff` never sees them
+- **Staged vs unstaged state is preserved** — your index looks the same on the other side
+- **Validation before anything touches the repo**: sha256 checksums of every file, same-repository fingerprint check (root commits), base-commit check, clean-tree check
+- **One command each way** instead of a multi-step `format-patch`/`diff`/`am`/`apply` choreography
+- **Binary-safe** (`--binary` patches for tracked files, verbatim bytes for untracked)
+- **Plain-git fallback**: the bundle is a standard zip of standard git patches — worst case, a machine with only git + unzip applies it by hand (instructions are inside every bundle)
+
+## Install
+
+```bash
+npm install -g gitferry        # or: npm pack && npm i -g ./gitferry-0.1.0.tgz (offline)
+```
+
+### Closed environments (no npm)
+
+Build one self-contained file and copy it anywhere Node ≥18 exists:
+
+```bash
+npm run bundle                 # → dist/gitferry.cjs (~280 KB, zero dependencies)
+node gitferry.cjs pack         # runs without any install or node_modules
+```
+
+## Usage
+
+### On the machine with changes
+
+```bash
+gitferry pack                          # base = merge-base with upstream
+gitferry pack --base origin/main       # explicit base
+gitferry pack -o changes.gitferry --no-untracked
+```
+
+### On the receiving machine
+
+```bash
+gitferry inspect changes.gitferry      # verify + preview, touches nothing
+gitferry apply changes.gitferry --dry-run
+gitferry apply changes.gitferry
+```
+
+Apply order: commits (`git am -3`, full author/date/message preserved) → staged patch (index + worktree) → unstaged patch (worktree only) → untracked files (never overwrites existing files unless `--force`).
+
+On conflicts you get standard git conflict markers and clear instructions (`git am --continue` / `--abort`, `.rej` files as last resort) — never a half-broken repo without a way back.
+
+### Flags
+
+| Flag | Command | Effect |
+|------|---------|--------|
+| `--base <ref>` | pack | commit the bundle applies onto |
+| `--no-commits` / `--no-worktree` / `--no-untracked` | pack | trim what's captured |
+| `--dry-run` | apply | validate + show the plan, change nothing |
+| `--force` | apply | override same-repo, clean-tree, and overwrite guards |
+| `-C <dir>` | pack/apply | run against another directory |
+
+## MCP server (drive it from Claude or any agent)
+
+```bash
+claude mcp add gitferry -- gitferry-mcp
+# closed env: claude mcp add gitferry -- node /path/to/gitferry-mcp.cjs
+```
+
+Exposes `pack_changes`, `inspect_bundle`, `apply_bundle` over stdio. Then: *"pack my changes here into a bundle"* / *"apply ~/transfer.gitferry to this repo and show me what changed"*.
+
+## Bundle format
+
+A `.gitferry` file is a plain zip:
+
+```
+manifest.json            # versioned manifest: repo fingerprint, base/head shas,
+                         # content listing, sha256 of every entry
+commits/00NN-*.patch     # git format-patch output (mbox — author, date, message)
+worktree/staged.patch    # git diff --binary --cached
+worktree/unstaged.patch  # git diff --binary
+untracked/<paths>        # verbatim file bytes
+README.txt               # human instructions for manual apply with plain git
+```
+
+Everything inside is standard-git-consumable by design; gitferry adds integrity checking and one-command UX, never a proprietary encoding.
+
+## Notes & limitations
+
+- Merge commits in the packed range are flattened by `format-patch` — pack warns; prefer linear branches or pick a different `--base`
+- Replayed commits get new shas (same content/author, new committer) — normal for `git am`
+- Both machines need the repo to share history (validated via root-commit fingerprint)
+- Requires git ≥ 2.32 on the applying machine
+
+## Development
+
+```bash
+npm install
+npm run build     # tsc → dist/
+npm test          # vitest: round-trip e2e on real temp repos + guard tests
+npm run bundle    # single-file dist/gitferry.cjs + dist/gitferry-mcp.cjs
+```
