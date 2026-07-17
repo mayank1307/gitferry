@@ -1,6 +1,6 @@
 # gitferry
 
-**Portable git-change bundles for air-gapped repos.** Pack your unpushed commits, staged/unstaged changes, and untracked files into a single shareable file on one machine — carry it across the air gap (USB, secure file transfer, email) — validate and apply it to the same repo on another machine. No shared remote, no network, no sync required.
+**Portable git-change bundles for air-gapped repos.** Pack your unpushed commits, staged/unstaged changes, and untracked files into a single shareable file on one machine — carry it across the air gap (USB, secure file transfer, email, or QR codes across a webcam) — validate and apply it to the same repo on another machine. No shared remote, no network, no sync required.
 
 ```
 machine A (has your changes)          machine B (same repo, no sync)
@@ -38,7 +38,7 @@ npm install -g gitferry        # or: npm pack && npm i -g ./gitferry-0.1.0.tgz (
 Build one self-contained file and copy it anywhere Node ≥18 exists:
 
 ```bash
-npm run bundle                 # → dist/gitferry.cjs (~280 KB, zero dependencies)
+npm run bundle                 # → dist/gitferry.cjs (~760 KB, zero dependencies)
 node gitferry.cjs pack         # runs without any install or node_modules
 ```
 
@@ -47,10 +47,13 @@ node gitferry.cjs pack         # runs without any install or node_modules
 ### On the machine with changes
 
 ```bash
-gitferry pack                          # base = merge-base with upstream
+gitferry pack                          # asks what should travel (Enter = uncommitted); base = merge-base with upstream
+gitferry pack --only staged            # skip the question: all | uncommitted | staged | unstaged | committed
 gitferry pack --base origin/main       # explicit base
 gitferry pack -o changes.gitferry --no-untracked
 ```
+
+The interactive picker only appears in a terminal; in scripts (no TTY) `pack` takes everything unless `--only` or `--no-*` flags say otherwise. Selections mean: **all** = commits + staged + unstaged + untracked · **uncommitted** = everything except commits · **staged** = index edits only · **unstaged** = worktree edits + untracked · **committed** = unpushed commits only.
 
 ### On the receiving machine
 
@@ -59,6 +62,27 @@ gitferry inspect changes.gitferry      # verify + preview, touches nothing
 gitferry apply changes.gitferry --dry-run
 gitferry apply changes.gitferry
 ```
+
+### No transfer channel at all? Beam it over QR
+
+When even USB is off the table, the screen itself is the channel: one machine plays the bundle as a looping sequence of QR codes, the other watches with any webcam.
+
+```bash
+# machine A (sender)
+gitferry show changes.gitferry             # QR loop right in the terminal
+gitferry show changes.gitferry --browser   # bigger + denser, in a local browser page
+gitferry show changes.gitferry --color     # experimental: 3x density, 3 chunks per image in R/G/B
+
+# machine B (receiver) — point its webcam at A's screen
+gitferry read                              # opens a local camera page, reassembles the bundle
+gitferry apply changes.gitferry
+```
+
+Every QR frame carries its **chunk number / total** plus a transfer id, so the receiver knows exactly which pieces it still needs — it shows the missing numbers live and keeps collecting as the loop repeats (order doesn't matter; missed frames come around again). The file is only written once **every numbered chunk arrived and the whole-file sha256 matches**, so a completed `read` is proof nothing was skipped or corrupted. Both pages live on `127.0.0.1`; no network between the machines is used or needed.
+
+Throughput is roughly `chunk × fps`: defaults give ~0.6 KB/s in the terminal, ~3 KB/s in the browser, ~10 KB/s with `--color` — meant for patch-sized bundles, not megabyte piles (`pack --no-untracked` helps keep them small).
+
+### Applying
 
 Apply order: commits (`git am -3`, full author/date/message preserved) → staged patch (index + worktree) → unstaged patch (worktree only) → untracked files (never overwrites existing files unless `--force`).
 
@@ -69,10 +93,15 @@ On conflicts you get standard git conflict markers and clear instructions (`git 
 | Flag | Command | Effect |
 |------|---------|--------|
 | `--base <ref>` | pack | commit the bundle applies onto |
-| `--no-commits` / `--no-worktree` / `--no-untracked` | pack | trim what's captured |
+| `--only <what>` | pack | `all` / `uncommitted` / `staged` / `unstaged` / `committed` — non-interactive selection |
+| `--no-commits` / `--no-worktree` / `--no-untracked` | pack | trim what's captured (combinable with `--only`) |
 | `--dry-run` | apply | validate + show the plan, change nothing |
 | `--force` | apply | override same-repo, clean-tree, and overwrite guards |
 | `-C <dir>` | pack/apply | run against another directory |
+| `--chunk <bytes>` / `--fps <n>` | show | QR payload size and display speed |
+| `--browser` / `--color` | show | browser-page display; experimental 3× density via R/G/B channels |
+| `--no-open` / `--port <n>` | show/read | don't auto-open the local page / pin its port |
+| `-o <file>` / `--force` | read | output path / overwrite an existing file |
 
 ## MCP server (drive it from Claude or any agent)
 

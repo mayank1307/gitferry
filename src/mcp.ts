@@ -41,7 +41,9 @@ server.registerTool(
         .optional()
         .describe("Ref/sha the bundle applies onto (default: merge-base with the upstream tracking branch)"),
       includeCommits: z.boolean().optional().describe("Include unpushed commits (default true)"),
-      includeWorktree: z.boolean().optional().describe("Include staged/unstaged changes (default true)"),
+      includeWorktree: z.boolean().optional().describe("Include staged AND unstaged changes; master switch over includeStaged/includeUnstaged (default true)"),
+      includeStaged: z.boolean().optional().describe("Include staged (index) changes (default true)"),
+      includeUnstaged: z.boolean().optional().describe("Include unstaged working-tree changes (default true)"),
       includeUntracked: z.boolean().optional().describe("Include untracked files (default true)"),
     },
   },

@@ -177,10 +177,25 @@ gitferry inspect embargoed.gitferry   # audit exactly what crossed the boundary
 
 **Signal:** you want *some* of your state to travel, not all of it.
 
+Running `gitferry pack` in a terminal asks directly:
+
+```
+what should travel?
+  1. all          commits + staged + unstaged + untracked
+  2. uncommitted  staged + unstaged + untracked (no commits)  ← default
+  3. staged       staged edits only
+  4. unstaged     unstaged edits + untracked files
+  5. committed    unpushed commits only
+```
+
+Or skip the question with flags (also what scripts use — without a TTY, pack takes everything):
+
 ```bash
-gitferry pack --no-untracked            # commits + tracked edits only (no local scratch files)
-gitferry pack --no-commits              # just the working-tree state, no history
-gitferry pack --no-worktree             # clean commits only — like format-patch, but validated
+gitferry pack --only staged             # exactly what's in the index — "ship what I reviewed"
+gitferry pack --only unstaged           # the experiments you haven't staged, incl. new files
+gitferry pack --only committed          # clean commits only — like format-patch, but validated
+gitferry pack --only uncommitted        # everything that isn't committed yet
+gitferry pack --no-untracked            # trim untracked from any of the above (combinable)
 gitferry apply bundle.gitferry --no-untracked   # receiver-side: skip the untracked files
 ```
 
@@ -219,11 +234,32 @@ cp -R bundle/untracked/. .
 
 Every bundle is a plain zip of standard git patches by design. The tool is convenience + validation, never a gatekeeper.
 
-Middle ground: if the machine has Node ≥18 but no npm access, copy the single-file `dist/gitferry.cjs` (~280 KB) alongside the bundle and run `node gitferry.cjs apply transfer.gitferry`.
+Middle ground: if the machine has Node ≥18 but no npm access, copy the single-file `dist/gitferry.cjs` (~760 KB) alongside the bundle and run `node gitferry.cjs apply transfer.gitferry`.
 
 ---
 
-## 14. Recovery scenarios (when apply doesn't go cleanly)
+## 14. No file channel at all — beam it through the screen
+
+**Signal:** the machines can't even exchange a file (no USB ports, no shared drive, no email between zones) — but they're in the same room, or one can see the other's screen. Any webcam becomes the transfer channel.
+
+```bash
+# sender — plays the bundle as a looping sequence of numbered QR codes
+gitferry show transfer.gitferry              # in the terminal
+gitferry show transfer.gitferry --browser    # bigger/denser browser page
+gitferry show transfer.gitferry --color      # experimental 3x: chunks ride the R/G/B channels
+
+# receiver — point its webcam at the sender's screen
+gitferry read                                # local camera page; shows which chunk numbers are still missing
+gitferry apply transfer.gitferry
+```
+
+Every frame is numbered (`chunk 17/117`) and stamped with the transfer's id, so the receiver can prove completeness: it keeps collecting across loops (missed frames come around again) and only writes the file when all numbers are present *and* the whole-file sha256 matches. Then `apply`'s own per-entry checksums verify it a second time. Both sides talk only to `127.0.0.1` — the light between the screens is the network.
+
+Works for the same-room case, and equally over a video call with screen share (webcam pointed at a monitor showing the shared screen is the low-tech fallback; a crisp screen-share window scans far better).
+
+---
+
+## 15. Recovery scenarios (when apply doesn't go cleanly)
 
 | Situation | What happens | What you do |
 |---|---|---|

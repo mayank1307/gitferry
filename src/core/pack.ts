@@ -24,8 +24,57 @@ export interface PackOptions {
   /** Ref/sha the bundle applies onto. Defaults to merge-base with upstream, else HEAD (no commits). */
   base?: string;
   includeCommits?: boolean;
+  /** Master switch for both worktree patches (back-compat; see includeStaged/includeUnstaged). */
   includeWorktree?: boolean;
+  includeStaged?: boolean;
+  includeUnstaged?: boolean;
   includeUntracked?: boolean;
+}
+
+/** What a pack should carry, as a single named choice. */
+export const SELECTIONS = ["all", "uncommitted", "staged", "unstaged", "committed"] as const;
+export type Selection = (typeof SELECTIONS)[number];
+
+export const SELECTION_SUMMARY: Record<Selection, string> = {
+  all: "commits + staged + unstaged + untracked",
+  uncommitted: "staged + unstaged + untracked (no commits)",
+  staged: "staged edits only",
+  unstaged: "unstaged edits + untracked files",
+  committed: "unpushed commits only",
+};
+
+/** Map a named selection onto the pack include flags. */
+export function selectionIncludes(
+  sel: Selection,
+): Required<Pick<PackOptions, "includeCommits" | "includeStaged" | "includeUnstaged" | "includeUntracked">> {
+  switch (sel) {
+    case "all":
+      return { includeCommits: true, includeStaged: true, includeUnstaged: true, includeUntracked: true };
+    case "uncommitted":
+      return { includeCommits: false, includeStaged: true, includeUnstaged: true, includeUntracked: true };
+    case "staged":
+      return { includeCommits: false, includeStaged: true, includeUnstaged: false, includeUntracked: false };
+    case "unstaged":
+      return { includeCommits: false, includeStaged: false, includeUnstaged: true, includeUntracked: true };
+    case "committed":
+      return { includeCommits: true, includeStaged: false, includeUnstaged: false, includeUntracked: false };
+  }
+}
+
+/** Parse a user's picker answer: a 1-based number, a selection name, or "" for the default (null = no default). */
+export function parseSelectionChoice(
+  input: string,
+  fallback: Selection | null = "uncommitted",
+): Selection | undefined {
+  const s = input.trim().toLowerCase();
+  if (s === "") return fallback ?? undefined;
+  const byNumber = SELECTIONS[Number(s) - 1];
+  if (/^[1-5]$/.test(s) && byNumber) return byNumber;
+  if ((SELECTIONS as readonly string[]).includes(s)) return s as Selection;
+  if (s === "commits" || s === "commit") return "committed"; // common aliases
+  if (s === "unstage") return "unstaged";
+  if (s === "stage") return "staged";
+  return undefined;
 }
 
 export interface PackResult {
@@ -38,6 +87,8 @@ export async function pack(opts: PackOptions): Promise<PackResult> {
   const warnings: string[] = [];
   const includeCommits = opts.includeCommits ?? true;
   const includeWorktree = opts.includeWorktree ?? true;
+  const includeStaged = (opts.includeStaged ?? true) && includeWorktree;
+  const includeUnstaged = (opts.includeUnstaged ?? true) && includeWorktree;
   const includeUntracked = opts.includeUntracked ?? true;
 
   const root = await repoRoot(opts.cwd);
@@ -108,12 +159,14 @@ export async function pack(opts: PackOptions): Promise<PackResult> {
   // --- Working-tree changes (staged + unstaged, binary-safe) ----------------
   let hasStaged = false;
   let hasUnstaged = false;
-  if (includeWorktree) {
+  if (includeStaged) {
     const staged = await git(root, ["diff", "--binary", "--full-index", "--cached"]);
     if (staged) {
       entries["worktree/staged.patch"] = strToU8(staged + "\n");
       hasStaged = true;
     }
+  }
+  if (includeUnstaged) {
     const unstaged = await git(root, ["diff", "--binary", "--full-index"]);
     if (unstaged) {
       entries["worktree/unstaged.patch"] = strToU8(unstaged + "\n");
@@ -134,9 +187,17 @@ export async function pack(opts: PackOptions): Promise<PackResult> {
   }
 
   if (commits.length === 0 && !hasStaged && !hasUnstaged && untracked.length === 0) {
+    const wanted = [
+      includeCommits ? "commits in range" : null,
+      includeStaged ? "staged changes" : null,
+      includeUnstaged ? "unstaged changes" : null,
+      includeUntracked ? "untracked files" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
     throw new GitFerryError(
-      "nothing to pack: no commits in range, no working-tree changes, no untracked files",
-      "check --base, or make some changes first",
+      `nothing to pack: no ${wanted}`,
+      "check --base, widen the selection (--only), or make some changes first",
     );
   }
 
