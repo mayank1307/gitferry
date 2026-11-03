@@ -6,6 +6,8 @@ The tagged release passed CI on Node 22/24 across Linux, macOS, and Windows. Its
 
 The initial v0.4.0 npm and MCP publications used interactive authentication. Preserve all released tags and artifacts; subsequent changes on `main` do not replace published packages.
 
+Version 0.4.2 carries the Codex and agent-assisted setup documentation and uses the extended npm-processing wait in the release workflow. The v0.4.1 publication above records the first validated OIDC release.
+
 ## One-time maintainer setup
 
 1. Keep [the source repository](https://github.com/mayank1307/gitferry) public and confirm that future contributions can be released under the MIT license.
@@ -60,7 +62,7 @@ npm run release:artifacts
 
 `release:check` validates the vendored official registry schema and all version locations, builds from a clean dist directory, runs tests, packs the actual npm artifact, installs it in an isolated temporary project, and connects to every shipped MCP entry point. The package smoke check downloads production dependencies from npm and requires network access. It cleans up its temporary directory.
 
-`release:artifacts` produces `release/gitferry-0.4.1.tgz`, `release/gitferry.cjs`, `release/gitferry-mcp.cjs`, `release/server.json`, and SHA256SUMS. It does not publish. Verify the checksums from inside release/ using `shasum -a 256 -c SHA256SUMS` (macOS) or `sha256sum -c SHA256SUMS` (Linux).
+`release:artifacts` produces `release/gitferry-0.4.2.tgz`, `release/gitferry.cjs`, `release/gitferry-mcp.cjs`, `release/server.json`, and SHA256SUMS. It does not publish. Verify the checksums from inside release/ using `shasum -a 256 -c SHA256SUMS` (macOS) or `sha256sum -c SHA256SUMS` (Linux).
 
 Review the intended diff, ensure clean-machine CI passes on all six Node/OS combinations, and try DEMO.md before release. Keep unrelated existing work out of the release commit. Local execution on one OS does not establish cross-platform success.
 

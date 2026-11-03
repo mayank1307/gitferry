@@ -1,6 +1,6 @@
 {
   "name": "gitferry",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Portable git-change bundles for air-gapped repos: pack unpushed commits, worktree changes, and untracked files into one shareable patch file, then validate and apply it elsewhere.",
   "type": "module",
   "license": "MIT",

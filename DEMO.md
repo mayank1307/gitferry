@@ -1,6 +1,6 @@
 # Five-minute GitFerry walkthrough
 
-Install the published version with `npm install -g gitferry@0.4.1`, or follow [INSTALL.md](INSTALL.md) for offline installation and MCP client setup.
+Install the published version with `npm install -g gitferry@0.4.2`, or follow [INSTALL.md](INSTALL.md) for offline installation and MCP client setup.
 
 Use disposable repositories. These shell commands work in macOS/Linux or Git Bash on Windows after installing GitFerry; replace `gitferry` with `node /absolute/path/to/gitferry.cjs` for the standalone CLI.
 

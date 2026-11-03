@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2 — 3 November 2026
+
+- Ship Codex CLI registration instructions and a copyable TOML configuration, plus agent-assisted installation prompts for Codex and Claude Code.
+- Clarify package installation, MCP registration, reconnection, and verification of tool discovery.
+- Allow up to five minutes for npm processing after an accepted publication before failing release verification; retries preserve the exact published artifact.
+- Update pinned npm/client examples and public release links to 0.4.2.
+
 ## 0.4.1 — 3 November 2026
 
 - Publish through GitHub Actions using the configured npm trusted publisher, alongside MCP Registry metadata and checksummed GitHub release assets.

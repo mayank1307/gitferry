@@ -1,6 +1,6 @@
 # gitferry
 
-**v0.4.1 is released.** [npm package](https://www.npmjs.com/package/gitferry/v/0.4.1) · [v0.4.1 release and downloads](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1) · [MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.1)
+**v0.4.2 is released.** [npm package](https://www.npmjs.com/package/gitferry/v/0.4.2) · [v0.4.2 release and downloads](https://github.com/mayank1307/gitferry/releases/tag/v0.4.2) · [MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.2)
 
 **Portable git-change bundles for air-gapped repos.** Pack your unpushed commits, staged/unstaged changes, and untracked files into a single shareable file on one machine — carry it across the air gap (USB, secure file transfer, email, or QR codes across a webcam) — validate and apply it to the same repo on another machine. No shared remote, no network, no sync required.
 
@@ -34,7 +34,7 @@ You can — gitferry *uses* them under the hood. What raw git doesn't give you:
 Requires **Node.js 22 or newer** and **Git 2.32 or newer**. Install the published CLI and MCP server from npm:
 
 ```bash
-npm install -g gitferry@0.4.1
+npm install -g gitferry@0.4.2
 gitferry --version
 ```
 
@@ -44,7 +44,7 @@ For MCP-only use, skip the global install and use the pinned `npx` configuration
 
 ### Closed environments (no npm)
 
-Download `gitferry.cjs`, `gitferry-mcp.cjs`, and `SHA256SUMS` from the [public v0.4.1 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1). These standalone files include their JavaScript dependencies; transfer them to the offline machine with Node and Git. See [INSTALL.md](INSTALL.md#offline-installation) for checksum verification and setup.
+Download `gitferry.cjs`, `gitferry-mcp.cjs`, and `SHA256SUMS` from the [public v0.4.2 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.2). These standalone files include their JavaScript dependencies; transfer them to the offline machine with Node and Git. See [INSTALL.md](INSTALL.md#offline-installation) for checksum verification and setup.
 
 To build the same standalone executables from a source checkout:
 
@@ -127,24 +127,24 @@ Register with the CLI for your client (requires Codex CLI or Claude Code, respec
 
 ```bash
 # Codex
-codex mcp add gitferry -- npx --yes --package=gitferry@0.4.1 gitferry-mcp
+codex mcp add gitferry -- npx --yes --package=gitferry@0.4.2 gitferry-mcp
 codex mcp get gitferry
 
 # Claude Code
-claude mcp add --transport stdio gitferry -- npx --yes --package=gitferry@0.4.1 gitferry-mcp
+claude mcp add --transport stdio gitferry -- npx --yes --package=gitferry@0.4.2 gitferry-mcp
 claude mcp get gitferry
 ```
 
 Choose your client's registration command, reconnect or start a new session, and verify that `pack_changes`, `inspect_bundle`, and `apply_bundle` are available. `mcp get` confirms the saved configuration; tool discovery in the connected client confirms the server is working. See [Codex setup](INSTALL.md#codex) for the TOML alternative and [agent-assisted installation](#agent-assisted-installation) to delegate setup.
 
-Use this configuration for the published 0.4.1 package in clients that accept `mcpServers` JSON. The explicit executable matters because this package supplies both a CLI and an MCP server:
+Use this configuration for the published 0.4.2 package in clients that accept `mcpServers` JSON. The explicit executable matters because this package supplies both a CLI and an MCP server:
 
 ```json
 {
   "mcpServers": {
     "gitferry": {
       "command": "npx",
-      "args": ["--yes", "--package=gitferry@0.4.1", "gitferry-mcp"]
+      "args": ["--yes", "--package=gitferry@0.4.2", "gitferry-mcp"]
     }
   }
 }
@@ -175,13 +175,13 @@ Use absolute paths. Start with: *“Pack the uncommitted changes in /absolute/pa
 
 `only` accepts `all`, `uncommitted`, `staged`, `unstaged`, `committed`, or `repo`. Snapshot mode (`repo`) carries current tracked-file contents rather than history; it can seed an empty directory. The default without a selection includes all change categories, matching non-interactive CLI use. Tool annotations describe side effects to the client; they do not enforce approvals or restrict filesystem access.
 
-See [INSTALL.md](INSTALL.md) for setup and offline transfer, [DEMO.md](DEMO.md) for a two-repository walkthrough, and [PUBLISHING.md](PUBLISHING.md) for maintainer release steps. Published registry identity: [`io.github.mayank1307/gitferry`](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.1).
+See [INSTALL.md](INSTALL.md) for setup and offline transfer, [DEMO.md](DEMO.md) for a two-repository walkthrough, and [PUBLISHING.md](PUBLISHING.md) for maintainer release steps. Published registry identity: [`io.github.mayank1307/gitferry`](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.2).
 
 ### Agent-assisted installation
 
 Paste this into Codex or Claude Code with terminal and configuration access:
 
-> Set up GitFerry v0.4.1 as a local stdio MCP server in this client using https://github.com/mayank1307/gitferry/blob/main/INSTALL.md. Check Node.js 22+ and Git 2.32+. Check for an existing GitFerry registration, preserve other servers, and register the pinned npx command for this client. A global npm install is optional. Verify the saved configuration, then verify that pack_changes, inspect_bundle, and apply_bundle are available. If a restart or new session is needed, tell me what to do and verify tool discovery afterward.
+> Set up GitFerry v0.4.2 as a local stdio MCP server in this client using https://github.com/mayank1307/gitferry/blob/main/INSTALL.md. Check Node.js 22+ and Git 2.32+. Check for an existing GitFerry registration, preserve other servers, and register the pinned npx command for this client. A global npm install is optional. Verify the saved configuration, then verify that pack_changes, inspect_bundle, and apply_bundle are available. If a restart or new session is needed, tell me what to do and verify tool discovery afterward.
 
 The agent can perform setup when asked and given the required access. Package download happens automatically through `npx` after registration; client approvals and reconnection follow the client's normal behavior.
 

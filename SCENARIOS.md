@@ -206,7 +206,7 @@ gitferry apply bundle.gitferry --no-untracked   # receiver-side: skip the untrac
 **Signal:** you drive your workflow through Claude Code or another MCP client and want this as a conversational step.
 
 ```bash
-claude mcp add --transport stdio gitferry -- npx --yes --package=gitferry@0.4.1 gitferry-mcp
+claude mcp add --transport stdio gitferry -- npx --yes --package=gitferry@0.4.2 gitferry-mcp
 ```
 
 Then, in conversation:

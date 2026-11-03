@@ -2,7 +2,7 @@
   "mcpServers": {
     "gitferry": {
       "command": "npx",
-      "args": ["--yes", "--package=gitferry@0.4.1", "gitferry-mcp"]
+      "args": ["--yes", "--package=gitferry@0.4.2", "gitferry-mcp"]
     }
   }
 }
