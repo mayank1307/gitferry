@@ -1,12 +1,16 @@
 # GitFerry public MCP release plan
 
-## Released — 3 November 2026
+## Trusted publishing validated — v0.4.1, 3 November 2026
+
+[GitFerry 0.4.1](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1) was published through [GitHub Actions](https://github.com/mayank1307/gitferry/actions/runs/41591005748) to npm, the MCP Registry, and GitHub Releases. The npm trusted publisher now shows **Valid**; the first-publication deadline no longer applies. The npm tarball matches the Actions artifact and includes signed provenance for the v0.4.1 tag. A fresh npm installation passed an MCP handshake. See [PUBLISHING.md](PUBLISHING.md#configured-npm-trusted-publisher) for the saved scope and retry procedure.
+
+## Released — v0.4.0, 3 November 2026
 
 GitFerry 0.4.0 is published on [npm](https://www.npmjs.com/package/gitferry/v/0.4.0) and the [official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.0). The [source repository](https://github.com/mayank1307/gitferry) and [v0.4.0 release assets](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0) are public. The registry identity is `io.github.mayank1307/gitferry`.
 
 The release includes reproducible packaging, three local stdio MCP tools, an importable server factory, npm/registry metadata, installation and deployment examples, standalone offline bundles, archive/path protections, safer writes, repository operation locks, and CI/release workflows. See [INSTALL.md](INSTALL.md) for installation and client setup, [CHANGELOG.md](CHANGELOG.md) for release changes, and [PUBLISHING.md](PUBLISHING.md) for future release procedures.
 
-Validation completed: all 81 tests passed locally; Node 22/24 CI passed on Linux, macOS, and Windows (platform-specific symlink/hook tests are skipped on Windows). A fresh public npm installation completed an MCP handshake and listed all three tools. Published npm bytes, registry metadata, and all five GitHub assets were verified. The release workflow completed successfully. Initial account publication was interactive. npm trusted publishing is now configured for `mayank1307/gitferry`, `release.yml`, and the `release` environment; npm marks the connection pending validation and requires its first publication before 5 November 2026, 06:33 UTC (12:03 PM IST). The first new version published through OIDC will provide end-to-end verification. See [PUBLISHING.md](PUBLISHING.md#configured-npm-trusted-publisher) for the saved configuration.
+Validation completed: all 81 tests passed locally; Node 22/24 CI passed on Linux, macOS, and Windows (platform-specific symlink/hook tests are skipped on Windows). A fresh public npm installation completed an MCP handshake and listed all three tools. Published npm bytes, registry metadata, and all five GitHub assets were verified. The release workflow completed successfully. Initial account publication was interactive. npm trusted publishing is now configured for `mayank1307/gitferry`, `release.yml`, and the `release` environment; the connection was validated by the subsequent v0.4.1 publication through OIDC. See [PUBLISHING.md](PUBLISHING.md#configured-npm-trusted-publisher) for the saved configuration.
 
 ## Historical plan — 31 October 2026
 

@@ -1,8 +1,10 @@
 # Publishing GitFerry
 
-GitFerry 0.4.0 was released publicly on 3 November 2026: [npm](https://www.npmjs.com/package/gitferry/v/0.4.0), [MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.0), and [GitHub release with offline assets](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0). The source repository is public. GitFerry runs locally over stdio; there is no hosted MCP endpoint or GitFerry account requirement for users.
+GitFerry 0.4.1 was released through GitHub Actions on 3 November 2026: [npm](https://www.npmjs.com/package/gitferry/v/0.4.1), [MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.1), and [GitHub release with offline assets](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1). The source repository is public. GitFerry runs locally over stdio; there is no hosted MCP endpoint or GitFerry account requirement for users.
 
-The tagged release passed CI on Node 22/24 across Linux, macOS, and Windows, and the release workflow verified all published artifacts. The initial npm and MCP publications used interactive account authentication. npm trusted publishing was configured on 3 November 2026 for future releases; its saved scope is documented below. A fresh version has not yet been published through OIDC. The steps below apply to future versions. Preserve the v0.4.0 tag and artifacts; documentation changes on `main` do not replace the published package.
+The tagged release passed CI on Node 22/24 across Linux, macOS, and Windows. Its npm publication used the configured OIDC trusted publisher, generated signed provenance for `.github/workflows/release.yml` at `refs/tags/v0.4.1`, and changed the npm connection status to **Valid**. The [release workflow](https://github.com/mayank1307/gitferry/actions/runs/41591005748) completed npm, MCP Registry, and GitHub publication. npm processing exceeded the initial verification window; retrying the failed publishing job verified the existing immutable package and completed the remaining steps.
+
+The initial v0.4.0 npm and MCP publications used interactive authentication. Preserve all released tags and artifacts; subsequent changes on `main` do not replace published packages.
 
 ## One-time maintainer setup
 
@@ -15,8 +17,6 @@ The tagged release passed CI on Node 22/24 across Linux, macOS, and Windows, and
 
 The registry name is `io.github.mayank1307/gitferry`. GitHub OIDC supplies registry namespace ownership in Actions. The `mcpName` field must match server.json before the npm artifact is published.
 
-Version 0.4.1 is the first release being published entirely through the configured GitHub Actions trusted publisher. Its successful npm publication will validate the pending connection.
-
 ## Configured npm trusted publisher
 
 | Setting | Saved value |
@@ -28,8 +28,8 @@ Version 0.4.1 is the first release being published entirely through the configur
 | GitHub environment | `release` |
 | Allowed actions | Direct publish and stage publish |
 | Configuration ID | `b26ad109-b8af-4bd9-b5a9-b0a39a794063` |
-| Initial status | Pending validation |
-| First-publication deadline | 5 November 2026, 06:33 UTC (12:03 PM IST) |
+| Status | Valid — verified in npm settings on 3 November 2026 |
+| First OIDC publication | `gitferry@0.4.1` |
 
 The publishing job already runs on a GitHub-hosted runner with Node 24, npm 12.2.1, `id-token: write`, and `environment: release`. When an unused version tag is pushed, the workflow runs the six-platform validation matrix, builds the release artifacts, and publishes through npm OIDC. npm issues a short-lived credential for that job; no `NPM_TOKEN` repository secret is required. Stage publication is included by npm; this workflow uses direct publication so a staged-package approval is not part of the normal release path.
 
@@ -45,7 +45,7 @@ If the configuration must be recreated, review any existing trust entry first, t
 npx --yes npm@11.15.0 trust github gitferry --file release.yml --repository mayank1307/gitferry --environment release --allow-publish
 ```
 
-npm may request account 2FA approval when reading or changing trust configurations. The configuration was saved successfully and read back in npm package settings. npm marks it **pending validation** and requires a first publication before **5 November 2026, 06:33 UTC (12:03 PM IST)** to validate this connection. Publish a reviewed new version before that deadline, or inspect/reconfigure the connection if the deadline is missed. Publishing that new version is the remaining end-to-end verification. A dry run or retry of the already published v0.4.0 only verifies artifacts and does not test a fresh OIDC publication. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) for provider requirements.
+npm may request account 2FA approval when reading or changing trust configurations. This connection completed its first publication and is validated; the initial pending-validation deadline no longer applies. A dry run or retry of an already published version verifies artifacts but does not test a new OIDC publication. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) for provider requirements.
 
 ## Verify a candidate locally
 
@@ -85,7 +85,7 @@ The publishing job uses Node 24, npm 12.2.1, and mcp-publisher 1.8.7 with a pinn
 
 ## Retrying and recovery
 
-If npm succeeded but the registry or GitHub release step failed, use **Run workflow** on Publish GitFerry with the same existing tag, using the tagged source and its exact artifacts rather than a changed `main` checkout. The workflow verifies the public npm tarball matches the rebuilt candidate before continuing. It refuses a version whose artifact differs. An identical existing registry record is also verified and skipped. Existing GitHub assets are compared before missing assets are uploaded; differing bytes fail rather than overwrite released files.
+If npm succeeded but the registry or GitHub release step failed, use **Run workflow** on Publish GitFerry with the same existing tag, using the tagged source and its exact artifacts rather than a changed `main` checkout. The workflow verifies the public npm tarball matches the rebuilt candidate before continuing. After an accepted publication, it polls public metadata for up to five minutes to accommodate npm processing; if that expires, wait for public availability and retry the same tag rather than submitting a different artifact. It refuses a version whose artifact differs. An identical existing registry record is also verified and skipped. Existing GitHub assets are compared before missing assets are uploaded; differing bytes fail rather than overwrite released files.
 
 For a defective release, deprecate the affected npm version with a message naming the last good version, update installation examples if needed, and release a fix under a new version. Preserve released artifacts and tags. Never replace a version with different bytes.
 

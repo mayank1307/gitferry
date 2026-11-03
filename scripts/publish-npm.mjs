@@ -22,14 +22,15 @@ let remote = await getMetadata();
 if (!remote && !process.argv.includes('--verify-only')) {
   assert(process.env.GITHUB_ACTIONS === 'true', 'Automated publishing is restricted to GitHub Actions');
   execFileSync(process.execPath, [process.env.npm_execpath, 'publish', tarball, '--access', 'public'], { cwd: root, stdio: 'inherit' });
-  // npm's public read endpoint may lag a successful publish briefly.
-  for (const delay of [0, 2_000, 4_000, 6_000, 8_000]) {
-    if (delay) await setTimeout(delay);
+  // npm processing can take several minutes after a successful OIDC publish.
+  // Poll for up to five minutes without submitting the immutable version again.
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (attempt) await setTimeout(10_000);
     remote = await getMetadata();
     if (remote) break;
   }
 }
-assert(remote, `${pkg.name}@${pkg.version} is not published`);
+assert(remote, `${pkg.name}@${pkg.version} is not publicly available yet; if npm accepted publication, wait for processing and retry the same tagged release`);
 assert.equal(remote.mcpName, pkg.mcpName, 'Published npm package has a different registry identity');
 assert.equal(remote.dist.integrity, integrity, 'Published tarball differs from this release; refuse to reuse its version');
 const downloadUrl = new URL(remote.dist.tarball);
