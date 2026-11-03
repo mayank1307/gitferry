@@ -2,18 +2,46 @@
 
 GitFerry 0.4.0 was released publicly on 3 November 2026: [npm](https://www.npmjs.com/package/gitferry/v/0.4.0), [MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.0), and [GitHub release with offline assets](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0). The source repository is public. GitFerry runs locally over stdio; there is no hosted MCP endpoint or GitFerry account requirement for users.
 
-The tagged release passed CI on Node 22/24 across Linux, macOS, and Windows, and the release workflow verified all published artifacts. The initial npm and MCP publications used interactive account authentication; a successful verification of existing publications does not prove future OIDC publication is configured. The steps below apply to future versions. Preserve the v0.4.0 tag and artifacts; documentation changes on `main` do not replace the published package.
+The tagged release passed CI on Node 22/24 across Linux, macOS, and Windows, and the release workflow verified all published artifacts. The initial npm and MCP publications used interactive account authentication. npm trusted publishing was configured on 3 November 2026 for future releases; its saved scope is documented below. A fresh version has not yet been published through OIDC. The steps below apply to future versions. Preserve the v0.4.0 tag and artifacts; documentation changes on `main` do not replace the published package.
 
 ## One-time maintainer setup
 
 1. Keep [the source repository](https://github.com/mayank1307/gitferry) public and confirm that future contributions can be released under the MIT license.
 2. Sign in to npm with an account that has publish access to the existing `gitferry` package. The initial release was published by `mayankku1307`; the MCP namespace uses the GitHub identity `mayank1307`.
 3. Keep two-factor authentication enabled for npm publication. Complete any browser approval requested by the CLI. If npm stages a submission, approve the intended version through Staged Packages before verifying public availability; see [npm staged publishing](https://docs.npmjs.com/staged-publishing/).
-4. In npm package settings, add a GitHub trusted publisher: owner `mayank1307`, repository `gitferry`, workflow `release.yml`, environment `release`. Enable direct `npm publish` for that publisher. No npm write token is needed by the workflow.
+4. Keep the configured npm trusted publisher aligned with `.github/workflows/release.yml`: owner `mayank1307`, repository `gitferry`, workflow filename `release.yml`, environment `release`, direct `npm publish` enabled. No npm write token is needed by the workflow. If these names change, update the npm trust configuration before the next release.
 5. Create the GitHub environment `release` and limit it to reviewed version tags; configure reviewers if your organization requires them. Protect the default branch and release tags. Ensure Actions may request OIDC tokens and create releases.
 6. Enable GitHub private vulnerability reporting as described in SECURITY.md.
 
 The registry name is `io.github.mayank1307/gitferry`. GitHub OIDC supplies registry namespace ownership in Actions. The `mcpName` field must match server.json before the npm artifact is published.
+
+## Configured npm trusted publisher
+
+| Setting | Saved value |
+|---------|-------------|
+| Package | `gitferry` |
+| Provider | GitHub Actions |
+| Repository | `mayank1307/gitferry` |
+| Workflow filename | `release.yml` |
+| GitHub environment | `release` |
+| Allowed actions | Direct publish and stage publish |
+| Configuration ID | `b26ad109-b8af-4bd9-b5a9-b0a39a794063` |
+
+The publishing job already runs on a GitHub-hosted runner with Node 24, npm 12.2.1, `id-token: write`, and `environment: release`. When an unused version tag is pushed, the workflow runs the six-platform validation matrix, builds the release artifacts, and publishes through npm OIDC. npm issues a short-lived credential for that job; no `NPM_TOKEN` repository secret is required. Stage publication is included by npm; this workflow uses direct publication so a staged-package approval is not part of the normal release path.
+
+To inspect the saved configuration with an npm version supporting trust commands:
+
+```bash
+npx --yes npm@11.15.0 trust list gitferry
+```
+
+If the configuration must be recreated, review any existing trust entry first, then use:
+
+```bash
+npx --yes npm@11.15.0 trust github gitferry --file release.yml --repository mayank1307/gitferry --environment release --allow-publish
+```
+
+npm may request account 2FA approval when reading or changing trust configurations. The configuration was saved successfully; publishing the next new version is the remaining end-to-end verification. A dry run or retry of the already published v0.4.0 only verifies artifacts and does not test a fresh OIDC publication. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) for provider requirements.
 
 ## Verify a candidate locally
 
