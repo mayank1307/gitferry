@@ -22,6 +22,8 @@ export function initRepo(dir: string): void {
   g(dir, "config", "user.email", "test@example.com");
   g(dir, "config", "user.name", "Test User");
   g(dir, "config", "commit.gpgsign", "false");
+  // Fixtures assert exact bytes; ignore a developer/runner's checkout conversion.
+  g(dir, "config", "core.autocrlf", "false");
 }
 
 export function write(dir: string, rel: string, content: string | Buffer): void {
@@ -39,7 +41,7 @@ export function commitAll(dir: string, message: string): string {
 /** Clone src to a new temp dir, with identity configured. */
 export function cloneRepo(src: string): string {
   const dest = path.join(tmpDir(), "clone");
-  execFileSync("git", ["clone", "--quiet", src, dest], { encoding: "utf8" });
+  execFileSync("git", ["clone", "--quiet", "-c", "core.autocrlf=false", src, dest], { encoding: "utf8" });
   g(dest, "config", "user.email", "other@example.com");
   g(dest, "config", "user.name", "Other User");
   g(dest, "config", "commit.gpgsign", "false");

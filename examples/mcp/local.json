@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "gitferry": {
+      "command": "node",
+      "args": ["/absolute/path/to/gitferry/dist/gitferry-mcp.cjs"]
+    }
+  }
+}

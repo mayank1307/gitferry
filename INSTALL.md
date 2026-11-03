@@ -1,136 +1,95 @@
-# Installing gitferry on another device
+# Installing GitFerry
 
-Three install paths, by how locked-down the target device is. All of them are offline — nothing downloads anything.
+GitFerry requires **Node.js 22 or newer** and **Git 2.32 or newer**. It runs locally, including its MCP server. npm installation needs registry access for dependencies; the standalone files run offline.
 
-## The transfer kit
-
-Copy these files from this machine (all in `~/Documents/gitferry/`, regenerable with `npm pack` and `npm run bundle`):
-
-| File | Size | Needs on target | Gives you |
-|------|------|-----------------|-----------|
-| `gitferry-0.1.0.tgz` | 216 KB | Node ≥18 + npm | full install: `gitferry` + `gitferry-mcp` commands on PATH |
-| `dist/gitferry.cjs` | 278 KB | Node ≥18 only | single-file CLI, zero install |
-| `dist/gitferry-mcp.cjs` | 760 KB | Node ≥18 only | single-file MCP server, zero install |
-
-Verify integrity after transfer (sha256 for v0.1.0 as built on 2026-07-17):
-
-```
-31c757849021a5e7d4600960afb847670ef3635cbe23fb0ef7a312c3d06c4c94  gitferry-0.1.0.tgz
-9c3869f8d051d3967eb8de66af64c2d04047fb42fb074c6be210257ba84a3a74  dist/gitferry.cjs
-633c6921bba73a0a821d1f909250efc965b420a6968f9cf4194fee0c29828c9c  dist/gitferry-mcp.cjs
-```
+Version 0.4.0 is the release being prepared. Registry commands below become available after publication. To use the source checkout today:
 
 ```bash
-shasum -a 256 -c <<'EOF'   # macOS/Linux (on Windows: certutil -hashfile <file> SHA256)
-31c757849021a5e7d4600960afb847670ef3635cbe23fb0ef7a312c3d06c4c94  gitferry-0.1.0.tgz
-EOF
+npm ci
+npm run bundle
+node dist/gitferry.cjs --version
 ```
 
-> If you re-build, checksums change — regenerate this table with
-> `shasum -a 256 gitferry-*.tgz dist/*.cjs`.
-
----
-
-## Path A — normal device (has npm + registry access): tarball install
+## Online installation
 
 ```bash
-# copy gitferry-0.1.0.tgz over, then:
-npm install -g ./gitferry-0.1.0.tgz
-
-# verify
-gitferry --version        # → 0.1.0
+npm install -g gitferry@0.4.0
+gitferry --version
 gitferry --help
 ```
 
-> ⚠️ The tarball contains gitferry itself but **not** its four dependencies — npm
-> fetches those from the registry. If the device has no npm registry access
-> (or a proxy that blocks it), use Path B instead: the `.cjs` files embed everything.
+For an MCP client, global installation is optional. Use explicit package and binary selection:
 
-### Troubleshooting: `EACCES: permission denied, mkdir '/usr/local/lib/node_modules/...'`
-
-The device's Node is a system install, so `npm -g` targets a root-owned directory. Fix without sudo (one-time, also fixes all future `npm -g`):
-
-```bash
-mkdir -p ~/.npm-global
-npm config set prefix ~/.npm-global
-npm install -g ./gitferry-0.1.0.tgz
-echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.zshrc   # or .bashrc
-source ~/.zshrc
-```
-
-(Or skip npm entirely with Path B — often easier on managed work machines. `sudo npm install -g` also works but runs install scripts as root; last resort.)
-
-## Path B — restricted device (Node exists, npm blocked): single files
-
-```bash
-# copy dist/gitferry.cjs (and dist/gitferry-mcp.cjs if you want the MCP server)
-node gitferry.cjs --version
-
-# optional: make it feel installed
-mkdir -p ~/bin && mv gitferry.cjs ~/bin/
-echo 'alias gitferry="node ~/bin/gitferry.cjs"' >> ~/.zshrc   # or .bashrc
-```
-
-No `node_modules`, no install step, no admin rights. Each `.cjs` file is fully self-contained.
-
-## Path C — bare device (only git + unzip): no install at all
-
-You don't install gitferry — you only need it on the *packing* side. Every `.gitferry` bundle is a plain zip containing standard git patches and its own instructions:
-
-```bash
-unzip transfer.gitferry -d bundle/
-cat bundle/README.txt        # exact apply commands for that specific bundle
-```
-
----
-
-## Registering the MCP server (per client)
-
-Use the global command if you installed via **Path A**, or the absolute `.cjs` path for **Path B**.
-
-**Claude Code:**
-```bash
-claude mcp add --scope user gitferry -- gitferry-mcp
-# Path B: claude mcp add --scope user gitferry -- node /path/to/gitferry-mcp.cjs
-claude mcp list              # → gitferry ... ✓ Connected
-```
-
-**Codex CLI:**
-```bash
-codex mcp add gitferry -- gitferry-mcp
-```
-or in `~/.codex/config.toml`:
-```toml
-[mcp_servers.gitferry]
-command = "node"
-args = ["/path/to/gitferry-mcp.cjs"]
-```
-
-**Cursor / Windsurf / VS Code / any stdio MCP client** — same shape in their JSON config:
 ```json
-{ "mcpServers": { "gitferry": { "command": "node", "args": ["/path/to/gitferry-mcp.cjs"] } } }
+{
+  "mcpServers": {
+    "gitferry": {
+      "command": "npx",
+      "args": ["--yes", "--package=gitferry@0.4.0", "gitferry-mcp"]
+    }
+  }
+}
 ```
 
----
+This configuration launches a local process. Pinning the version makes updates deliberate. `npx` downloads the package and dependencies on first use, so use the standalone installation in restricted environments.
 
-## Smoke test on the new device (30 seconds)
+Clients have different configuration locations and formats. Use their MCP settings to launch `gitferry-mcp` after a global install, or `node` with the absolute standalone path below. JSON `mcpServers` examples are for clients that support that format.
+
+## Offline installation
+
+On a connected build machine:
 
 ```bash
-cd /tmp && mkdir ferry-test && cd ferry-test
-git init -qb main && git config user.email t@t.co && git config user.name t
-echo one > f.txt && git add -A && git commit -qm base
-echo two > f.txt && echo new > untracked.txt
-gitferry pack -o /tmp/t.gitferry          # should report 1 modified + 1 untracked
-gitferry inspect /tmp/t.gitferry          # → ✓ all checksums verified
+npm ci
+npm run release:artifacts
 ```
 
-## Requirements recap
+Transfer the standalone CLI and MCP files plus SHA256SUMS from the generated release directory. Both `.cjs` files embed their JavaScript dependencies; no npm install or administrator access is needed on the target machine. The target still needs Node and Git.
 
-| | Path A | Path B | Path C |
-|---|---|---|---|
-| git ≥ 2.32 | ✔ | ✔ | ✔ |
-| Node ≥ 18 | ✔ | ✔ | — |
-| npm | ✔ | — | — |
-| npm registry access (for deps) | ✔ | — | — |
-| admin rights | — | — | — |
-| network | deps only | — | — |
+Verify transferred files against the checksums obtained through your trusted release channel. On macOS/Linux, run `shasum -a 256 -c SHA256SUMS` from the directory containing the listed files. On Windows, compare `Get-FileHash -Algorithm SHA256` output with SHA256SUMS.
+
+```bash
+node /absolute/path/to/gitferry.cjs --version
+node /absolute/path/to/gitferry.cjs pack -C /absolute/path/to/repo
+```
+
+Configure the local MCP server:
+
+```json
+{
+  "mcpServers": {
+    "gitferry": {
+      "command": "node",
+      "args": ["/absolute/path/to/gitferry-mcp.cjs"]
+    }
+  }
+}
+```
+
+On Windows, use an absolute path such as `C:\\Tools\\gitferry-mcp.cjs` in JSON. The server communicates over stdin/stdout and normally waits silently; verify connection through your MCP client rather than expecting a web page.
+
+A `.tgz` from `npm pack` contains GitFerry but does **not** embed its npm dependencies. Installing it with `npm install -g ./gitferry-0.4.0.tgz` can still contact the npm registry. Use the standalone `.cjs` files for a disconnected target.
+
+## Target with only Git and unzip
+
+Create a portable bundle on the sending machine:
+
+```bash
+gitferry pack --portable -o transfer.gitferry
+```
+
+On the target, extract it into a fresh directory and review its README.txt for manual commands. Manual extraction/application bypasses GitFerry's validation and protections; use only trusted bundles and review paths and patches first. GitFerry itself is not installed on this target.
+
+The compact default format starts with `GFBR` and needs GitFerry or Node to unwrap. Use `--portable` when the target only has Git and unzip.
+
+## Verify the installation
+
+Follow [DEMO.md](DEMO.md) to pack changes, inspect the bundle, dry-run it, and apply it to a disposable clone. In an MCP client, verify the three tools appear: `pack_changes`, `inspect_bundle`, and `apply_bundle`.
+
+## Troubleshooting
+
+- **Command not found:** ensure Node, Git, and the global npm executable directory are on the MCP client's PATH. Desktop clients may need an absolute Node path or a restart after environment changes.
+- **Global installation permission error:** use `npx` or the standalone file instead of changing permissions on system directories.
+- **MCP connection hangs:** stdio servers wait for a client handshake. Use the MCP client to connect; do not send ordinary terminal text to stdout.
+- **Bundle rejected:** read the error before using `force`. Checksums, path validation, and size limits protect the receiver; `force` only bypasses the documented repository/overwrite guards.
+- **Older Node:** upgrade to the supported runtime. The bare Git/unzip fallback is available for trusted portable bundles.

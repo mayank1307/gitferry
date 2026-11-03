@@ -1,5 +1,5 @@
 import { strFromU8 } from "fflate";
-import { type Entries, readArchive } from "./archive.js";
+import { assertSafeEntryName, type Entries, readArchive } from "./archive.js";
 import { GitFerryError } from "./errors.js";
 import { FORMAT_VERSION, type Manifest, ManifestSchema, sha256 } from "./manifest.js";
 
@@ -19,6 +19,7 @@ export function readBundle(filePath: string): Bundle {
   if (!manifestRaw) {
     throw new GitFerryError("bundle has no manifest.json", "is this really a .gitferry bundle?");
   }
+  if (manifestRaw.byteLength > 4 * 1024 * 1024) throw new GitFerryError("bundle manifest exceeds 4 MiB size limit");
   let manifest: Manifest;
   try {
     manifest = ManifestSchema.parse(JSON.parse(strFromU8(manifestRaw)));
@@ -30,6 +31,36 @@ export function readBundle(filePath: string): Bundle {
       `bundle format v${manifest.formatVersion} is newer than this tool understands (v${FORMAT_VERSION})`,
       "upgrade gitferry on this machine",
     );
+  }
+
+  // Every semantic reference must correspond to exactly one checksummed payload.
+  const referenced = new Set<string>();
+  function reference(name: string): void {
+    assertSafeEntryName(name);
+    if (referenced.has(name)) throw new GitFerryError(`duplicate manifest reference: ${name}`);
+    referenced.add(name);
+    if (!Object.hasOwn(manifest.checksums, name)) throw new GitFerryError(`manifest reference is not checksummed: ${name}`);
+  }
+  for (const commit of manifest.contents.commits) {
+    assertSafeEntryName(commit.file);
+    if (commit.file.includes("/")) throw new GitFerryError(`unsafe commit patch filename: ${commit.file}`);
+    reference(`commits/${commit.file}`);
+  }
+  if (manifest.contents.worktree.staged) reference("worktree/staged.patch");
+  if (manifest.contents.worktree.unstaged) reference("worktree/unstaged.patch");
+  const targetNames = new Set<string>();
+  for (const [prefix, paths] of [["untracked", manifest.contents.untracked], ["repo", manifest.contents.repoFiles ?? []]] as const) {
+    for (const name of paths) {
+      assertSafeEntryName(name);
+      const canonical = name.normalize("NFC").toLowerCase();
+      if (targetNames.has(canonical)) throw new GitFerryError(`duplicate or colliding target path: ${name}`);
+      targetNames.add(canonical);
+      reference(`${prefix}/${name}`);
+    }
+  }
+  for (const name of Object.keys(manifest.checksums)) {
+    assertSafeEntryName(name);
+    if (name !== "README.txt" && !referenced.has(name)) throw new GitFerryError(`unreferenced payload in manifest: ${name}`);
   }
 
   // Exact entry set match: no missing, no extras.

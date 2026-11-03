@@ -155,7 +155,7 @@ gitferry pack --base v2.1.0 -o feature-for-upstream.gitferry
 # attach to email — one file instead of 0001-*.patch + "oh and also create these files"
 ```
 
-Receiver without gitferry can still unzip it and `git am` the patches — instructions are inside the bundle (`README.txt`).
+Receiver without gitferry can still unzip it and `git am` the patches — pack with `--portable` for a plain zip; instructions are inside the bundle (`README.txt`).
 
 ---
 
@@ -224,6 +224,7 @@ The agent gets structured JSON back (steps, warnings, skipped files), so it can 
 **Signal:** worst case — target machine has git and unzip, and you can't install anything (no Node, no npm, nothing).
 
 ```bash
+# pack with --portable on the sending side so plain unzip works here
 unzip transfer.gitferry -d bundle/
 cat bundle/README.txt          # the bundle documents its own application
 git am -3 bundle/commits/*.patch
@@ -232,7 +233,7 @@ git apply bundle/worktree/unstaged.patch
 cp -R bundle/untracked/. .
 ```
 
-Every bundle is a plain zip of standard git patches by design. The tool is convenience + validation, never a gatekeeper.
+Every bundle is a zip of standard git patches by design (`--portable` = plain zip; the compact default wraps it in brotli and unwraps with a Node one-liner shown in README.txt). The tool is convenience + validation, never a gatekeeper.
 
 Middle ground: if the machine has Node ≥18 but no npm access, copy the single-file `dist/gitferry.cjs` (~760 KB) alongside the bundle and run `node gitferry.cjs apply transfer.gitferry`.
 

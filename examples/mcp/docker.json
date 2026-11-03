@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "gitferry": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i", "--init", "--network=none",
+        "--mount", "type=bind,src=/absolute/path/to/workspace,dst=/workspace",
+        "gitferry-mcp:local"
+      ]
+    }
+  }
+}

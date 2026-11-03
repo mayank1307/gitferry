@@ -13,7 +13,8 @@ import {
   rootCommits,
   tryGit,
 } from "./git.js";
-import type { Manifest } from "./manifest.js";
+import { safeTarget, writeSafeTarget, withRepositoryLock } from "./safety.js";
+import { type Manifest, sha256 } from "./manifest.js";
 
 export interface ApplyOptions {
   cwd: string;
@@ -35,9 +36,18 @@ export interface ApplyResult {
   unstagedApplied: boolean;
   untrackedWritten: string[];
   untrackedSkipped: string[];
+  /** whole-repo snapshot bundles: tracked files written / skipped (differ locally, no --force) / already identical */
+  repoFilesWritten: string[];
+  repoFilesSkipped: string[];
+  repoFilesUnchanged: number;
 }
 
 export async function apply(opts: ApplyOptions): Promise<ApplyResult> {
+  const root = await tryGit(opts.cwd, ["rev-parse", "--show-toplevel"]) ?? opts.cwd;
+  return withRepositoryLock(root, () => applyUnlocked(opts));
+}
+
+async function applyUnlocked(opts: ApplyOptions): Promise<ApplyResult> {
   const includeUntracked = opts.includeUntracked ?? true;
   const warnings: string[] = [];
   const steps: string[] = [];
@@ -45,60 +55,83 @@ export async function apply(opts: ApplyOptions): Promise<ApplyResult> {
   // Integrity first: checksums + manifest schema (throws on any problem).
   const { entries, manifest } = readBundle(path.resolve(opts.cwd, opts.bundlePath));
   const { contents, repo } = manifest;
+  const repoFiles = contents.repoFiles ?? [];
+  // Snapshot bundles carry the tree itself, not patches: they can seed a bare
+  // directory or an empty repo, so the patch-oriented guards don't apply.
+  const snapshotOnly =
+    repoFiles.length > 0 &&
+    contents.commits.length === 0 &&
+    !contents.worktree.staged &&
+    !contents.worktree.unstaged &&
+    contents.untracked.length === 0;
 
-  const root = await repoRoot(opts.cwd);
-  if (!(await headExists(root))) {
+  let root: string;
+  let targetIsRepo = true;
+  try {
+    root = await repoRoot(opts.cwd);
+  } catch (e) {
+    if (!snapshotOnly) throw e;
+    root = path.resolve(opts.cwd);
+    targetIsRepo = false;
+    warnings.push("target is not a git repository — writing the snapshot files only (run 'git init' first if you want history here)");
+  }
+  const targetHasCommits = targetIsRepo && (await headExists(root));
+  if (!snapshotOnly && !targetHasCommits) {
     throw new GitFerryError("target repository has no commits", "clone/fetch the shared history first — a gitferry bundle applies onto an existing base commit");
   }
 
   // --- Preflight -------------------------------------------------------------
   // 1. Same repo? Root-commit fingerprints must intersect.
-  const localRoots = await rootCommits(root);
-  const related = repo.rootCommits.some((r) => localRoots.includes(r));
-  if (!related) {
-    if (!opts.force) {
-      throw new GitFerryError(
-        `this does not look like the same repository: bundle came from '${repo.repoName}' (root commit ${repo.rootCommits[0].slice(0, 12)}), which shares no history with this repo`,
-        "if you are sure, re-run with --force",
+  if (targetHasCommits) {
+    const localRoots = await rootCommits(root);
+    const related = repo.rootCommits.some((r) => localRoots.includes(r));
+    if (!related) {
+      if (!opts.force) {
+        throw new GitFerryError(
+          `this does not look like the same repository: bundle came from '${repo.repoName}' (root commit ${repo.rootCommits[0].slice(0, 12)}), which shares no history with this repo`,
+          "if you are sure, re-run with --force",
+        );
+      }
+      warnings.push("repo fingerprint mismatch overridden with --force");
+    }
+  }
+
+  if (!snapshotOnly) {
+    // 2. Base commit present?
+    const baseKnown = await commitExists(root, repo.base);
+    if (!baseKnown) {
+      warnings.push(
+        `base commit ${repo.base.slice(0, 12)} not found locally — attempting 3-way merges from patch blob ids; conflicts are more likely`,
       );
     }
-    warnings.push("repo fingerprint mismatch overridden with --force");
-  }
 
-  // 2. Base commit present?
-  const baseKnown = await commitExists(root, repo.base);
-  if (!baseKnown) {
-    warnings.push(
-      `base commit ${repo.base.slice(0, 12)} not found locally — attempting 3-way merges from patch blob ids; conflicts are more likely`,
-    );
-  }
-
-  // 3. HEAD at base?
-  const head = await resolveCommit(root, "HEAD");
-  if (head !== repo.base) {
-    warnings.push(
-      `HEAD (${head.slice(0, 12)}) differs from the bundle base (${repo.base.slice(0, 12)}); applying via 3-way merge — review the result`,
-    );
-  }
-
-  // 4. No git am already in progress.
-  const rebaseApply = await tryGit(root, ["rev-parse", "--git-path", "rebase-apply"]);
-  if (rebaseApply && existsSync(path.resolve(root, rebaseApply))) {
-    throw new GitFerryError(
-      "a 'git am' or rebase is already in progress in this repository",
-      "finish it or run 'git am --abort' first",
-    );
-  }
-
-  // 5. Clean tracked working tree (local untracked files are fine unless they collide).
-  if (await hasTrackedChanges(root)) {
-    if (!opts.force) {
-      throw new GitFerryError(
-        "target working tree has uncommitted changes to tracked files",
-        "commit or stash them first, or re-run with --force",
+    // 3. HEAD at base?
+    const head = await resolveCommit(root, "HEAD");
+    if (head !== repo.base) {
+      warnings.push(
+        `HEAD (${head.slice(0, 12)}) differs from the bundle base (${repo.base.slice(0, 12)}); applying via 3-way merge — review the result`,
       );
     }
-    warnings.push("applying onto a dirty working tree (--force)");
+
+    // 4. No git am already in progress.
+    const rebaseApply = await tryGit(root, ["rev-parse", "--git-path", "rebase-apply"]);
+    if (rebaseApply && existsSync(path.resolve(root, rebaseApply))) {
+      throw new GitFerryError(
+        "a 'git am' or rebase is already in progress in this repository",
+        "finish it or run 'git am --abort' first",
+      );
+    }
+
+    // 5. Clean tracked working tree (local untracked files are fine unless they collide).
+    if (await hasTrackedChanges(root)) {
+      if (!opts.force) {
+        throw new GitFerryError(
+          "target working tree has uncommitted changes to tracked files",
+          "commit or stash them first, or re-run with --force",
+        );
+      }
+      warnings.push("applying onto a dirty working tree (--force)");
+    }
   }
 
   // 6. Untracked collisions.
@@ -107,10 +140,7 @@ export async function apply(opts: ApplyOptions): Promise<ApplyResult> {
   const untrackedPlanned: string[] = [];
   if (includeUntracked) {
     for (const p of contents.untracked) {
-      const target = path.resolve(root, p);
-      if (!(target === root || target.startsWith(root + path.sep))) {
-        throw new GitFerryError(`unsafe untracked path in bundle: ${p}`);
-      }
+      const target = safeTarget(root, p);
       if (existsSync(target) && !opts.force) {
         untrackedSkipped.push(p);
       } else {
@@ -122,6 +152,36 @@ export async function apply(opts: ApplyOptions): Promise<ApplyResult> {
         `${untrackedSkipped.length} untracked file(s) already exist locally and will be skipped (use --force to overwrite): ${untrackedSkipped.join(", ")}`,
       );
     }
+  }
+
+  // 7. Whole-repo snapshot plan: identical files are already done; differing
+  //    files need --force; everything else gets written.
+  const repoFilesWritten: string[] = [];
+  const repoFilesSkipped: string[] = [];
+  const repoFilesPlanned: string[] = [];
+  let repoFilesUnchanged = 0;
+  for (const p of repoFiles) {
+    const target = safeTarget(root, p);
+    let existingDiffers = false;
+    if (existsSync(target)) {
+      try {
+        if (sha256(new Uint8Array(await fs.readFile(target))) === manifest.checksums[`repo/${p}`]) {
+          repoFilesUnchanged++;
+          continue;
+        }
+      } catch {
+        /* unreadable/odd local path counts as differing */
+      }
+      existingDiffers = true;
+    }
+    if (existingDiffers && !opts.force) repoFilesSkipped.push(p);
+    else repoFilesPlanned.push(p);
+  }
+  if (repoFilesSkipped.length > 0) {
+    warnings.push(
+      `${repoFilesSkipped.length} tracked file(s) differ locally and will be skipped (use --force to overwrite with the snapshot): ` +
+        `${repoFilesSkipped.slice(0, 10).join(", ")}${repoFilesSkipped.length > 10 ? " …" : ""}`,
+    );
   }
 
   // --- Dry run: report the plan, change nothing ------------------------------
@@ -151,6 +211,12 @@ export async function apply(opts: ApplyOptions): Promise<ApplyResult> {
       steps.push("worktree patches can only be pre-validated after commits are applied — skipped in dry-run");
     }
     if (untrackedPlanned.length > 0) steps.push(`would write ${untrackedPlanned.length} untracked file(s)`);
+    if (repoFiles.length > 0) {
+      steps.push(
+        `would write ${repoFilesPlanned.length} tracked file(s) from the snapshot` +
+          ` (${repoFilesUnchanged} already identical${repoFilesSkipped.length > 0 ? `, ${repoFilesSkipped.length} skipped` : ""})`,
+      );
+    }
     return {
       dryRun: true,
       manifest,
@@ -161,6 +227,9 @@ export async function apply(opts: ApplyOptions): Promise<ApplyResult> {
       unstagedApplied: false,
       untrackedWritten: untrackedPlanned,
       untrackedSkipped,
+      repoFilesWritten: repoFilesPlanned,
+      repoFilesSkipped,
+      repoFilesUnchanged,
     };
   }
 
@@ -212,12 +281,21 @@ export async function apply(opts: ApplyOptions): Promise<ApplyResult> {
 
     // 4) Untracked files.
     for (const p of untrackedPlanned) {
-      const target = path.resolve(root, p);
-      await fs.mkdir(path.dirname(target), { recursive: true });
-      await fs.writeFile(target, entries[`untracked/${p}`]);
+      writeSafeTarget(root, p, entries[`untracked/${p}`]);
       untrackedWritten.push(p);
     }
     if (untrackedWritten.length > 0) steps.push(`wrote ${untrackedWritten.length} untracked file(s)`);
+
+    // 5) Whole-repo snapshot files.
+    for (const p of repoFilesPlanned) {
+      writeSafeTarget(root, p, entries[`repo/${p}`]);
+      repoFilesWritten.push(p);
+    }
+    if (repoFilesWritten.length > 0) {
+      steps.push(`wrote ${repoFilesWritten.length} tracked file(s) from the snapshot (${repoFilesUnchanged} already identical)`);
+    } else if (repoFiles.length > 0) {
+      steps.push(`snapshot already applied — all ${repoFilesUnchanged} tracked file(s) identical`);
+    }
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -232,6 +310,9 @@ export async function apply(opts: ApplyOptions): Promise<ApplyResult> {
     unstagedApplied,
     untrackedWritten,
     untrackedSkipped,
+    repoFilesWritten,
+    repoFilesSkipped,
+    repoFilesUnchanged,
   };
 }
 

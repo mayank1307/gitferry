@@ -44,6 +44,15 @@ export function toMatricesUniform(frames: Uint8Array[], ecc: EccLevel = "M"): Qr
   return frames.map((f) => toMatrix(f, ecc, version));
 }
 
+/** Pack a matrix's module bits into base64 (MSB-first) for page payloads. */
+export function packBits(bits: Uint8Array): string {
+  const packed = new Uint8Array(Math.ceil(bits.length / 8));
+  for (let i = 0; i < bits.length; i++) {
+    if (bits[i]) packed[i >> 3] |= 0x80 >> (i & 7);
+  }
+  return Buffer.from(packed).toString("base64");
+}
+
 /**
  * Rasterize 1-3 equally sized matrices into one RGBA image, one matrix per
  * color channel (R, G, B). A single matrix lands in all channels — a plain

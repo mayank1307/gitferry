@@ -1,6 +1,6 @@
 {
   "name": "gitferry",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "Portable git-change bundles for air-gapped repos: pack unpushed commits, worktree changes, and untracked files into one shareable patch file, then validate and apply it elsewhere.",
   "type": "module",
   "license": "MIT",
@@ -9,30 +9,83 @@
     "gitferry-mcp": "dist/mcp.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "INSTALL.md",
+    "SCENARIOS.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "PUBLISHING.md",
+    "server.json",
+    "DEMO.md",
+    "docs",
+    "examples"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "bundle": "npm run build && esbuild src/cli.ts --bundle --platform=node --format=cjs --outfile=dist/gitferry.cjs && esbuild src/mcp.ts --bundle --platform=node --format=cjs --outfile=dist/gitferry-mcp.cjs",
+    "build": "node scripts/build.mjs",
+    "bundle": "node scripts/build.mjs --bundle",
     "test": "vitest run",
-    "prepack": "npm run build"
+    "check:release": "node scripts/check-release.mjs",
+    "smoke:package": "node scripts/package-smoke.mjs",
+    "release:check": "npm run check:release && npm run build && npm test && npm run smoke:package",
+    "release:artifacts": "npm run check:release && node scripts/release-artifacts.mjs",
+    "prepack": "npm run bundle",
+    "release:publish-npm": "node scripts/publish-npm.mjs",
+    "typecheck": "tsc --noEmit",
+    "start:mcp": "node dist/mcp.js",
+    "test:mcp": "npm run build && vitest run test/mcp.test.ts test/mcp-server.test.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "commander": "^12.1.0",
-    "fflate": "^0.8.2",
+    "fflate": "^0.8.3",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
-    "zod": "^3.24.1"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^20.17.0",
+    "@types/node": "^22.20.5",
     "@types/qrcode": "^1.5.6",
-    "esbuild": "^0.25.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "esbuild": "^0.28.2",
     "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
+    "vitest": "^5.0.5"
+  },
+  "mcpName": "io.github.mayank1307/gitferry",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mayank1307/gitferry.git"
+  },
+  "homepage": "https://github.com/mayank1307/gitferry#readme",
+  "bugs": {
+    "url": "https://github.com/mayank1307/gitferry/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "git",
+    "offline",
+    "air-gap",
+    "patch",
+    "developer-tools"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/server.d.ts",
+      "import": "./dist/mcp/server.js"
+    }
   }
 }

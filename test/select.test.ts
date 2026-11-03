@@ -75,6 +75,24 @@ describe("pack selection: all / uncommitted / staged / unstaged / committed", ()
     expect(m.contents.untracked).toEqual([]);
   });
 
+  it("repo: full tracked-file snapshot, exclusive of everything else", async () => {
+    const m = await packOnly("repo");
+    expect(m.stats.commits).toBe(0);
+    expect(m.contents.worktree).toEqual({ staged: false, unstaged: false });
+    expect(m.contents.untracked).toEqual([]); // new.md is untracked, not in a snapshot
+    expect(m.contents.repoFiles).toEqual(["a.txt", "b.txt"]);
+    expect(m.stats.repoFiles).toBe(2);
+  });
+
+  it("picker input maps to selections, including repo aliases", async () => {
+    expect(parseSelectionChoice("repo")).toBe("repo");
+    expect(parseSelectionChoice("6")).toBe("repo");
+    expect(parseSelectionChoice("tracked")).toBe("repo");
+    expect(parseSelectionChoice("snapshot")).toBe("repo");
+    expect(parseSelectionChoice("")).toBe("uncommitted");
+    expect(parseSelectionChoice("7")).toBeUndefined();
+  });
+
   it("a selection with nothing behind it fails with a precise message", async () => {
     const clean = tmpDir();
     initRepo(clean);
@@ -104,6 +122,16 @@ describe("pack selection: all / uncommitted / staged / unstaged / committed", ()
       worktree: { staged: false, unstaged: true },
       untracked: [],
       commits: [],
+    });
+
+    // regression: the CLI must forward includeRepoFiles to pack()
+    const snap = path.join(tmpDir(), "only-repo.gitferry");
+    run(["pack", "--only", "repo", "-o", snap]);
+    expect(inspect(snap).manifest.contents).toMatchObject({
+      worktree: { staged: false, unstaged: false },
+      untracked: [],
+      commits: [],
+      repoFiles: ["a.txt", "b.txt"],
     });
 
     expect(() => run(["pack", "--only", "everythingg"])).toThrowError(/unknown --only value/);

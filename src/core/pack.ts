@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { strToU8 } from "fflate";
 import { VERSION } from "../version.js";
-import { type Entries, writeArchive } from "./archive.js";
+import { ARCHIVE_LIMITS, type Entries, writeArchive } from "./archive.js";
 import { GitFerryError } from "./errors.js";
 import {
   currentBranch,
@@ -15,6 +15,7 @@ import {
   tryGit,
   upstreamRef,
 } from "./git.js";
+import { safeTarget, withRepositoryLock } from "./safety.js";
 import { FORMAT_VERSION, type Manifest, sha256 } from "./manifest.js";
 
 export interface PackOptions {
@@ -29,10 +30,17 @@ export interface PackOptions {
   includeStaged?: boolean;
   includeUnstaged?: boolean;
   includeUntracked?: boolean;
+  /**
+   * Whole-repo snapshot mode: bundle every tracked file verbatim (current
+   * working-tree content). Exclusive — commits/patches/untracked are skipped.
+   */
+  includeRepoFiles?: boolean;
+  /** Write a plain deflate zip (bigger) that any `unzip` can open, instead of the compact brotli wrapper. */
+  portable?: boolean;
 }
 
 /** What a pack should carry, as a single named choice. */
-export const SELECTIONS = ["all", "uncommitted", "staged", "unstaged", "committed"] as const;
+export const SELECTIONS = ["all", "uncommitted", "staged", "unstaged", "committed", "repo"] as const;
 export type Selection = (typeof SELECTIONS)[number];
 
 export const SELECTION_SUMMARY: Record<Selection, string> = {
@@ -41,23 +49,27 @@ export const SELECTION_SUMMARY: Record<Selection, string> = {
   staged: "staged edits only",
   unstaged: "unstaged edits + untracked files",
   committed: "unpushed commits only",
+  repo: "every tracked file as-is — seed or sync a whole checkout",
 };
 
 /** Map a named selection onto the pack include flags. */
 export function selectionIncludes(
   sel: Selection,
-): Required<Pick<PackOptions, "includeCommits" | "includeStaged" | "includeUnstaged" | "includeUntracked">> {
+): Required<Pick<PackOptions, "includeCommits" | "includeStaged" | "includeUnstaged" | "includeUntracked" | "includeRepoFiles">> {
+  const none = { includeCommits: false, includeStaged: false, includeUnstaged: false, includeUntracked: false, includeRepoFiles: false };
   switch (sel) {
     case "all":
-      return { includeCommits: true, includeStaged: true, includeUnstaged: true, includeUntracked: true };
+      return { ...none, includeCommits: true, includeStaged: true, includeUnstaged: true, includeUntracked: true };
     case "uncommitted":
-      return { includeCommits: false, includeStaged: true, includeUnstaged: true, includeUntracked: true };
+      return { ...none, includeStaged: true, includeUnstaged: true, includeUntracked: true };
     case "staged":
-      return { includeCommits: false, includeStaged: true, includeUnstaged: false, includeUntracked: false };
+      return { ...none, includeStaged: true };
     case "unstaged":
-      return { includeCommits: false, includeStaged: false, includeUnstaged: true, includeUntracked: true };
+      return { ...none, includeUnstaged: true, includeUntracked: true };
     case "committed":
-      return { includeCommits: true, includeStaged: false, includeUnstaged: false, includeUntracked: false };
+      return { ...none, includeCommits: true };
+    case "repo":
+      return { ...none, includeRepoFiles: true };
   }
 }
 
@@ -69,11 +81,12 @@ export function parseSelectionChoice(
   const s = input.trim().toLowerCase();
   if (s === "") return fallback ?? undefined;
   const byNumber = SELECTIONS[Number(s) - 1];
-  if (/^[1-5]$/.test(s) && byNumber) return byNumber;
+  if (/^\d+$/.test(s) && byNumber) return byNumber;
   if ((SELECTIONS as readonly string[]).includes(s)) return s as Selection;
   if (s === "commits" || s === "commit") return "committed"; // common aliases
   if (s === "unstage") return "unstaged";
   if (s === "stage") return "staged";
+  if (s === "tracked" || s === "snapshot" || s === "full") return "repo";
   return undefined;
 }
 
@@ -84,12 +97,19 @@ export interface PackResult {
 }
 
 export async function pack(opts: PackOptions): Promise<PackResult> {
+  const root = await repoRoot(opts.cwd);
+  return withRepositoryLock(root, () => packUnlocked(opts));
+}
+
+async function packUnlocked(opts: PackOptions): Promise<PackResult> {
   const warnings: string[] = [];
-  const includeCommits = opts.includeCommits ?? true;
-  const includeWorktree = opts.includeWorktree ?? true;
+  const includeRepoFiles = opts.includeRepoFiles ?? false;
+  // Snapshot mode is exclusive: it carries the tree itself, not changes to it.
+  const includeCommits = !includeRepoFiles && (opts.includeCommits ?? true);
+  const includeWorktree = !includeRepoFiles && (opts.includeWorktree ?? true);
   const includeStaged = (opts.includeStaged ?? true) && includeWorktree;
   const includeUnstaged = (opts.includeUnstaged ?? true) && includeWorktree;
-  const includeUntracked = opts.includeUntracked ?? true;
+  const includeUntracked = !includeRepoFiles && (opts.includeUntracked ?? true);
 
   const root = await repoRoot(opts.cwd);
   if (!(await headExists(root))) {
@@ -121,7 +141,21 @@ export async function pack(opts: PackOptions): Promise<PackResult> {
     }
   }
 
-  const entries: Entries = {};
+  const entries: Entries = Object.create(null);
+  let entryBytes = 0;
+  const addEntry = (name: string, data: Uint8Array) => {
+    entryBytes += data.byteLength;
+    if (data.byteLength > ARCHIVE_LIMITS.entryBytes || entryBytes > ARCHIVE_LIMITS.expandedBytes) throw new GitFerryError("bundle exceeds expanded size limit", "select fewer changes or split the transfer");
+    if (Object.keys(entries).length >= ARCHIVE_LIMITS.entries) throw new GitFerryError("bundle exceeds entry count limit");
+    entries[name] = data;
+  };
+  const readSource = async (file: string) => {
+    const handle = await fs.open(file, "r");
+    try {
+      if ((await handle.stat()).size > Math.min(ARCHIVE_LIMITS.entryBytes, ARCHIVE_LIMITS.expandedBytes - entryBytes)) throw new GitFerryError("source file exceeds bundle size limit", "select fewer files or split the transfer");
+      return await handle.readFile();
+    } finally { await handle.close(); }
+  };
 
   // --- Unpushed commits (git format-patch) ----------------------------------
   const commits: Manifest["contents"]["commits"] = [];
@@ -146,8 +180,8 @@ export async function pack(opts: PackOptions): Promise<PackResult> {
       const logLines = log.split("\n").filter(Boolean);
       for (let i = 0; i < patchFiles.length; i++) {
         const fileName = path.basename(patchFiles[i]);
-        const data = await fs.readFile(patchFiles[i]);
-        entries[`commits/${fileName}`] = new Uint8Array(data);
+        const data = await readSource(patchFiles[i]);
+        addEntry(`commits/${fileName}`, new Uint8Array(data));
         const [sha = "", subject = ""] = (logLines[i] ?? "").split("\t");
         commits.push({ file: fileName, sha, subject });
       }
@@ -160,16 +194,16 @@ export async function pack(opts: PackOptions): Promise<PackResult> {
   let hasStaged = false;
   let hasUnstaged = false;
   if (includeStaged) {
-    const staged = await git(root, ["diff", "--binary", "--full-index", "--cached"]);
+    const staged = await git(root, ["diff", "--no-ext-diff", "--no-textconv", "--binary", "--full-index", "--cached"]);
     if (staged) {
-      entries["worktree/staged.patch"] = strToU8(staged + "\n");
+      addEntry("worktree/staged.patch", strToU8(staged + "\n"));
       hasStaged = true;
     }
   }
   if (includeUnstaged) {
-    const unstaged = await git(root, ["diff", "--binary", "--full-index"]);
+    const unstaged = await git(root, ["diff", "--no-ext-diff", "--no-textconv", "--binary", "--full-index"]);
     if (unstaged) {
-      entries["worktree/unstaged.patch"] = strToU8(unstaged + "\n");
+      addEntry("worktree/unstaged.patch", strToU8(unstaged + "\n"));
       hasUnstaged = true;
     }
   }
@@ -180,18 +214,36 @@ export async function pack(opts: PackOptions): Promise<PackResult> {
     const out = await git(root, ["ls-files", "--others", "--exclude-standard", "-z"]);
     const paths = out.split("\0").filter(Boolean);
     for (const p of paths) {
-      const data = await fs.readFile(path.join(root, p));
-      entries[`untracked/${p}`] = new Uint8Array(data);
+      const data = await readSource(safeTarget(root, p));
+      addEntry(`untracked/${p}`, new Uint8Array(data));
       untracked.push(p);
     }
   }
 
-  if (commits.length === 0 && !hasStaged && !hasUnstaged && untracked.length === 0) {
+  // --- Whole-repo snapshot (every tracked file, current on-disk content) ----
+  const repoFiles: string[] = [];
+  if (includeRepoFiles) {
+    const out = await git(root, ["ls-files", "-z"]);
+    const paths = out.split("\0").filter(Boolean);
+    for (const p of paths) {
+      try {
+        const data = await readSource(safeTarget(root, p));
+        addEntry(`repo/${p}`, new Uint8Array(data));
+        repoFiles.push(p);
+      } catch (e) {
+        if (e instanceof GitFerryError) throw e;
+        warnings.push(`tracked file missing from disk, not bundled: ${p}`);
+      }
+    }
+  }
+
+  if (commits.length === 0 && !hasStaged && !hasUnstaged && untracked.length === 0 && repoFiles.length === 0) {
     const wanted = [
       includeCommits ? "commits in range" : null,
       includeStaged ? "staged changes" : null,
       includeUnstaged ? "unstaged changes" : null,
       includeUntracked ? "untracked files" : null,
+      includeRepoFiles ? "tracked files" : null,
     ]
       .filter(Boolean)
       .join(", ");
@@ -209,10 +261,11 @@ export async function pack(opts: PackOptions): Promise<PackResult> {
     insertions: parseInt(/(\d+) insertions?/.exec(shortstat)?.[1] ?? "0", 10),
     deletions: parseInt(/(\d+) deletions?/.exec(shortstat)?.[1] ?? "0", 10),
     untracked: untracked.length,
+    ...(includeRepoFiles ? { repoFiles: repoFiles.length } : {}),
   };
 
   // --- Manifest + README ------------------------------------------------------
-  entries["README.txt"] = strToU8(manualApplyReadme({ repoName, branch, head, base, commits, hasStaged, hasUnstaged, untracked }));
+  addEntry("README.txt", strToU8(manualApplyReadme({ repoName, branch, head, base, commits, hasStaged, hasUnstaged, untracked, repoFiles, portable: Boolean(opts.portable) })));
 
   const checksums: Record<string, string> = {};
   for (const [name, data] of Object.entries(entries)) {
@@ -228,17 +281,20 @@ export async function pack(opts: PackOptions): Promise<PackResult> {
       commits,
       worktree: { staged: hasStaged, unstaged: hasUnstaged },
       untracked,
+      ...(includeRepoFiles ? { repoFiles } : {}),
     },
     stats,
     checksums,
   };
-  entries["manifest.json"] = strToU8(JSON.stringify(manifest, null, 2));
+  const manifestBytes = strToU8(JSON.stringify(manifest, null, 2));
+  if (manifestBytes.byteLength > 4 * 1024 * 1024) throw new GitFerryError("bundle manifest exceeds 4 MiB size limit", "split the transfer into fewer files");
+  addEntry("manifest.json", manifestBytes);
 
   // --- Write archive -----------------------------------------------------------
   const safeBranch = branch.replace(/[^\w.-]+/g, "-");
   const defaultName = `${repoName}-${safeBranch}-${head.slice(0, 7)}.gitferry`;
   const outputPath = path.resolve(opts.cwd, opts.output ?? defaultName);
-  writeArchive(outputPath, entries);
+  writeArchive(outputPath, entries, { portable: opts.portable });
 
   return { outputPath, manifest, warnings };
 }
@@ -252,6 +308,8 @@ function manualApplyReadme(info: {
   hasStaged: boolean;
   hasUnstaged: boolean;
   untracked: string[];
+  repoFiles: string[];
+  portable: boolean;
 }): string {
   const steps: string[] = [];
   if (info.commits.length > 0) steps.push("  git am -3 bundle/commits/*.patch");
@@ -259,22 +317,31 @@ function manualApplyReadme(info: {
   // no -3 here: --3way implies --index, which would wrongly stage these changes
   if (info.hasUnstaged) steps.push("  git apply bundle/worktree/unstaged.patch");
   if (info.untracked.length > 0) steps.push("  cp -R bundle/untracked/. .");
+  if (info.repoFiles.length > 0) steps.push("  cp -R bundle/repo/. .    # full tracked-file snapshot — copies the whole tree");
+  const unwrap = info.portable
+    ? `Manual fallback — needs only git + unzip. From the target repo root
+(which should be at commit ${info.base.slice(0, 12)}):
+
+  unzip <this-file> -d bundle/`
+    : `Manual fallback — needs git + node (this compact bundle is a brotli-wrapped
+zip; \`gitferry pack --portable\` makes plain-unzip bundles instead). From the
+target repo root (which should be at commit ${info.base.slice(0, 12)}):
+
+  node -e 'const z=require("zlib"),f=require("fs");f.writeFileSync("bundle.zip",z.brotliDecompressSync(f.readFileSync(process.argv[1]).subarray(4)))' <this-file>
+  unzip bundle.zip -d bundle/`;
   return `gitferry bundle — portable git changes
 =========================================
 
 Source repo : ${info.repoName} (branch: ${info.branch})
 Source HEAD : ${info.head}
 Applies onto: ${info.base}
-Contains    : ${info.commits.length} commit(s), staged=${info.hasStaged}, unstaged=${info.hasUnstaged}, ${info.untracked.length} untracked file(s)
+Contains    : ${info.repoFiles.length > 0 ? `full snapshot of ${info.repoFiles.length} tracked file(s)` : `${info.commits.length} commit(s), staged=${info.hasStaged}, unstaged=${info.hasUnstaged}, ${info.untracked.length} untracked file(s)`}
 
 Preferred: apply with the gitferry tool (validates checksums & repo state):
 
   gitferry apply <this-file>
 
-Manual fallback — needs only git + unzip. From the target repo root
-(which should be at commit ${info.base.slice(0, 12)}):
-
-  unzip <this-file> -d bundle/
+${unwrap}
 ${steps.join("\n")}
 
 Every file's sha256 is listed in manifest.json if you want to verify integrity.

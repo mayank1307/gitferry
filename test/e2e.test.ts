@@ -1,12 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import { strFromU8, strToU8 } from "fflate";
 import { beforeAll, describe, expect, it } from "vitest";
 import { apply } from "../src/core/apply.js";
+import { readArchive, writeArchive } from "../src/core/archive.js";
 import { GitFerryError } from "../src/core/errors.js";
 import { inspect } from "../src/core/inspect.js";
-import { pack } from "../src/core/pack.js";
+import { pack, selectionIncludes } from "../src/core/pack.js";
 import { cloneRepo, commitAll, g, initRepo, tmpDir, write } from "./helpers.js";
 
 /**
@@ -100,6 +101,61 @@ describe("round trip: pack on A, apply on B", () => {
   });
 });
 
+describe("whole-repo snapshot (--only repo)", () => {
+  it("seeds an empty directory, then syncs a drifted clone (identical=skip, differ=--force)", async () => {
+    const repoA = tmpDir();
+    initRepo(repoA);
+    write(repoA, "README.md", "hello\n");
+    write(repoA, "src/main.ts", "console.log(1)\n");
+    commitAll(repoA, "base");
+    const clone = cloneRepo(repoA); // clone before the tweak so one file drifts
+    write(repoA, "src/main.ts", "console.log(2)\n"); // uncommitted — snapshot takes disk state
+
+    const { outputPath, manifest } = await pack({
+      cwd: repoA,
+      output: path.join(tmpDir(), "snap.gitferry"),
+      ...selectionIncludes("repo"),
+    });
+    expect(manifest.contents.repoFiles).toEqual(["README.md", "src/main.ts"]);
+    expect(manifest.contents.commits).toEqual([]);
+
+    // 1) seed a directory that is not even a git repo
+    const bare = tmpDir();
+    const seeded = await apply({ cwd: bare, bundlePath: outputPath });
+    expect(seeded.repoFilesWritten.sort()).toEqual(["README.md", "src/main.ts"]);
+    expect(seeded.warnings.join(" ")).toMatch(/not a git repository/);
+    expect(readFileSync(path.join(bare, "src/main.ts"), "utf8")).toBe("console.log(2)\n");
+
+    // 2) sync the clone: README identical, main.ts differs -> skipped without --force
+    const cautious = await apply({ cwd: clone, bundlePath: outputPath });
+    expect(cautious.repoFilesUnchanged).toBe(1);
+    expect(cautious.repoFilesSkipped).toEqual(["src/main.ts"]);
+    expect(readFileSync(path.join(clone, "src/main.ts"), "utf8")).toBe("console.log(1)\n");
+
+    // 3) --force overwrites the drifted file with the snapshot
+    const forced = await apply({ cwd: clone, bundlePath: outputPath, force: true });
+    expect(forced.repoFilesWritten).toEqual(["src/main.ts"]);
+    expect(readFileSync(path.join(clone, "src/main.ts"), "utf8")).toBe("console.log(2)\n");
+  });
+
+  it("refuses to dump a snapshot into an unrelated repository without --force", async () => {
+    const repoA = tmpDir();
+    initRepo(repoA);
+    write(repoA, "a.txt", "one\n");
+    commitAll(repoA, "base");
+    const { outputPath } = await pack({
+      cwd: repoA,
+      output: path.join(tmpDir(), "snap.gitferry"),
+      ...selectionIncludes("repo"),
+    });
+    const other = tmpDir();
+    initRepo(other);
+    write(other, "z.txt", "unrelated\n");
+    commitAll(other, "other");
+    await expect(apply({ cwd: other, bundlePath: outputPath })).rejects.toThrowError(/same repository/);
+  });
+});
+
 describe("guards and failure modes", () => {
   it("rejects a tampered bundle (checksum mismatch)", async () => {
     const repoA = tmpDir();
@@ -109,12 +165,13 @@ describe("guards and failure modes", () => {
     write(repoA, "a.txt", "two\n");
     const { outputPath } = await pack({ cwd: repoA, output: path.join(tmpDir(), "t.gitferry") });
 
-    // Tamper with the unstaged patch inside the zip, keep manifest as-is
-    const entries = unzipSync(new Uint8Array(readFileSync(outputPath)));
+    // Tamper with the unstaged patch inside the archive, keep manifest as-is
+    // (readArchive/writeArchive so this works on the compact brotli wrapper too)
+    const entries = readArchive(outputPath);
     entries["worktree/unstaged.patch"] = strToU8(
       strFromU8(entries["worktree/unstaged.patch"]).replace("two", "evil"),
     );
-    writeFileSync(outputPath, zipSync(entries));
+    writeArchive(outputPath, entries);
 
     expect(() => inspect(outputPath)).toThrowError(/checksum mismatch/);
   });

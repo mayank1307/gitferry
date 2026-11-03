@@ -1,13 +1,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { GitFerryError } from "./errors.js";
-import { createServer, listenLocal, openBrowser } from "./local.js";
-import { type EccLevel, type QrMatrix, toMatricesUniform } from "./qrcodec.js";
-import { encodeFrames } from "./qrwire.js";
+import { collectBody, createServer, listenLocal, MAX_IMAGE_BYTES, openBrowser } from "./local.js";
+import { decodeImage, type EccLevel, packBits, type QrMatrix, toMatricesUniform } from "./qrcodec.js";
+import { type AckInfo, encodeFrames, parseAck, parseFrame } from "./qrwire.js";
 
 export interface ShowPlan {
   fileName: string;
   byteSize: number;
+  /** hex id every frame of this transfer carries — acks must match it */
+  transferId: string;
   /** wire frames: [header, chunk 1..N] */
   frames: Uint8Array[];
   /** one QR matrix per frame, all at the same version */
@@ -36,6 +38,7 @@ export function prepareShow(filePath: string, opts: { chunk: number; color: bool
   return {
     fileName: path.basename(filePath),
     byteSize: data.byteLength,
+    transferId: parseFrame(frames[0])!.transferId,
     frames,
     matrices,
     groups,
@@ -115,13 +118,14 @@ export function runTerminalShow(plan: ShowPlan, fps: number): Promise<never> {
 /** Serve the QR slideshow as a local web page (bigger, denser, supports --color). */
 export async function runBrowserShow(
   plan: ShowPlan,
-  opts: { fps: number; port: number; open: boolean },
-): Promise<{ url: string }> {
+  opts: { fps: number; retryFps: number; port: number; open: boolean; onAck?: (a: AckInfo) => void },
+): Promise<{ url: string; close: () => void; done: Promise<AckInfo> }> {
   const payload = {
     name: plan.fileName,
     size: plan.byteSize,
     sizeLabel: formatBytes(plan.byteSize),
     fps: opts.fps,
+    retryFps: opts.retryFps,
     color: plan.color,
     matrixSize: plan.matrices[0].size,
     dataFrames: plan.dataFrames,
@@ -129,27 +133,86 @@ export async function runBrowserShow(
     groups: plan.groups,
   };
   const html = SHOW_PAGE.replace("__PAYLOAD__", JSON.stringify(payload).replace(/</g, "\\u003c"));
+  // Latest ack seen by this machine's camera. Acks only ever grow (the
+  // receiver never un-receives a chunk), so ignore stale camera frames that
+  // decode an older code. ackSeen counts every sighting (even identical ones)
+  // so the page can tell a *fresh* read during its loop-start scan phase from
+  // leftover state captured mid-loop.
+  let latestAck: AckInfo | null = null;
+  let ackSeen = 0;
+  // Resolves the first time this machine's camera reads an ack flagged complete,
+  // so the caller can stop the loop and exit instead of spinning forever.
+  let resolveDone: (a: AckInfo) => void = () => {};
+  const done = new Promise<AckInfo>((r) => {
+    resolveDone = r;
+  });
   const server = createServer((req, res) => {
     if (req.method === "GET" && (req.url === "/" || req.url?.startsWith("/?"))) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(html);
-    } else {
-      res.writeHead(404);
-      res.end();
+      return;
     }
+    if (req.method === "POST" && req.url?.startsWith("/ack")) {
+      const q = new URL(req.url, "http://localhost").searchParams;
+      const width = Number(q.get("w"));
+      const height = Number(q.get("h"));
+      if (!Number.isInteger(width) || !Number.isInteger(height) || width < 16 || height < 16 || width * height * 4 > MAX_IMAGE_BYTES) {
+        res.writeHead(400);
+        res.end();
+        return;
+      }
+      collectBody(req, width * height * 4)
+        .then((body) => {
+          if (body.byteLength === width * height * 4) {
+            for (const bytes of decodeImage(new Uint8ClampedArray(body.buffer, body.byteOffset, body.byteLength), width, height)) {
+              const frame = parseFrame(bytes);
+              if (frame?.kind !== "ack" || frame.transferId !== plan.transferId) continue;
+              const info = parseAck(frame);
+              if (!info) continue;
+              ackSeen++;
+              if (!latestAck || info.received >= latestAck.received) {
+                latestAck = info;
+                opts.onAck?.(info);
+              }
+              if (info.complete) resolveDone(info);
+            }
+          }
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(
+            latestAck
+              ? JSON.stringify({
+                  hasAck: true,
+                  seen: ackSeen,
+                  received: latestAck.received,
+                  total: latestAck.total,
+                  missing: latestAck.missing,
+                  missingCount: latestAck.missing.length,
+                  headerMissing: latestAck.headerMissing,
+                  complete: latestAck.complete,
+                })
+              : JSON.stringify({ hasAck: false, seen: ackSeen }),
+          );
+        })
+        .catch(() => {
+          res.writeHead(400);
+          res.end();
+        });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
   });
   const port = await listenLocal(server, opts.port);
   const url = `http://127.0.0.1:${port}/`;
   if (opts.open) openBrowser(url);
-  return { url };
-}
-
-function packBits(bits: Uint8Array): string {
-  const packed = new Uint8Array(Math.ceil(bits.length / 8));
-  for (let i = 0; i < bits.length; i++) {
-    if (bits[i]) packed[i >> 3] |= 0x80 >> (i & 7);
-  }
-  return Buffer.from(packed).toString("base64");
+  return {
+    url,
+    done,
+    close: () => {
+      server.close();
+      server.closeAllConnections?.();
+    },
+  };
 }
 
 const SHOW_PAGE = `<!doctype html>
@@ -160,16 +223,20 @@ const SHOW_PAGE = `<!doctype html>
   canvas { background:#fff; image-rendering:pixelated; }
   .bar { display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:center; }
   button { font:inherit; padding:4px 14px; cursor:pointer; }
-  .dim { color:#888; }
+  .dim { color:#888; } .ok { color:#6c6; }
+  #cam { position:fixed; right:12px; bottom:12px; width:180px; border-radius:6px;
+         background:#000; opacity:.85; }
 </style></head><body>
 <div class="bar"><strong id="title"></strong><span class="dim" id="mode"></span></div>
 <canvas id="qr"></canvas>
 <div class="bar">
   <button id="toggle">pause</button>
-  <label>speed <input id="fps" type="range" min="1" max="15" step="1"> <span id="fpsv"></span> fps</label>
+  <label>speed <input id="fps" type="range" min="1" max="30" step="1"> <span id="fpsv"></span> fps</label>
   <span id="status" class="dim"></span>
 </div>
 <div class="dim">on the other machine: <code>gitferry read</code> — point its camera here, keep the code large and steady</div>
+<div class="dim" id="camstat"></div>
+<video id="cam" autoplay playsinline muted></video>
 <script>
 const P = __PAYLOAD__;
 document.getElementById('title').textContent = P.name + ' · ' + P.sizeLabel;
@@ -178,8 +245,12 @@ const unpack = b64 => { const raw = atob(b64), n = P.matrixSize * P.matrixSize, 
   for (let i = 0; i < n; i++) out[i] = (raw.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1; return out; };
 const frames = P.frames.map(unpack);
 const quiet = 4, dim = P.matrixSize + quiet * 2;
-const groupImages = P.groups.map(g => {
-  const img = new ImageData(dim, dim); img.data.fill(255);
+const imgCache = new Map();
+function imageFor(g) {
+  const key = g.join(',');
+  let img = imgCache.get(key);
+  if (img) return img;
+  img = new ImageData(dim, dim); img.data.fill(255);
   for (let r = 0; r < P.matrixSize; r++) for (let c = 0; c < P.matrixSize; c++) {
     const px = ((r + quiet) * dim + c + quiet) * 4;
     if (g.length === 1) { const v = frames[g[0]][r * P.matrixSize + c] ? 0 : 255;
@@ -187,27 +258,123 @@ const groupImages = P.groups.map(g => {
     else for (let ch = 0; ch < 3; ch++)
       img.data[px+ch] = (g[ch] !== undefined && frames[g[ch]][r * P.matrixSize + c]) ? 0 : 255;
   }
-  return img;
-});
+  imgCache.set(key, img); return img;
+}
+const allIdx = frames.map((_, ix) => ix);
+function buildGroups(idxs) {
+  const groups = idxs.includes(0) ? [[0]] : [];
+  const rest = idxs.filter(ix => ix !== 0);
+  if (P.color) { for (let k = 0; k < rest.length; k += 3) groups.push(rest.slice(k, k + 3)); }
+  else for (const ix of rest) groups.push([ix]);
+  return groups.length ? groups : [[0]];
+}
 const off = document.createElement('canvas'); off.width = off.height = dim;
 const canvas = document.getElementById('qr'), ctx = canvas.getContext('2d');
-const side = Math.floor(Math.min(innerWidth - 40, innerHeight - 170) / dim) * dim || dim;
+const side = Math.floor(Math.min(innerWidth - 40, innerHeight - 190) / dim) * dim || dim;
 canvas.width = canvas.height = side; ctx.imageSmoothingEnabled = false;
-let i = 0, loop = 1, playing = true, timer = null;
+const status = document.getElementById('status'), camstat = document.getElementById('camstat');
+let groupsNow = buildGroups(allIdx);
+let i = 0, loop = 1, playing = true, timer = null, finished = false, ack = null, camStream = null;
+let scanning = false, scanUntil = 0, scanBaseline = 0, ackSeen = 0;
 const label = g => g[0] === 0 ? 'header frame'
   : 'chunk' + (g.length > 1 ? 's' : '') + ' ' + g.join(', ') + ' / ' + P.dataFrames;
 function draw() {
-  off.getContext('2d').putImageData(groupImages[i], 0, 0);
+  if (finished || scanning) return;
+  const g = groupsNow[i];
+  off.getContext('2d').putImageData(imageFor(g), 0, 0);
   ctx.drawImage(off, 0, 0, side, side);
-  document.getElementById('status').textContent =
-    'image ' + (i + 1) + '/' + P.groups.length + ' · ' + label(P.groups[i]) + ' · loop ' + loop;
-  i = (i + 1) % P.groups.length; if (i === 0) loop++;
+  status.textContent = 'image ' + (i + 1) + '/' + groupsNow.length + ' · ' + label(g) + ' · loop ' + loop +
+    (ack ? ' · receiver has ' + ack.received + '/' + ack.total : '');
+  i++;
+  if (i >= groupsNow.length) { i = 0; loop++; startScanPhase(); }
 }
-const fpsIn = document.getElementById('fps'); fpsIn.value = P.fps;
-function restart() { clearInterval(timer); document.getElementById('fpsv').textContent = fpsIn.value;
-  if (playing) timer = setInterval(draw, 1000 / +fpsIn.value); }
-fpsIn.oninput = restart;
+// Each new loop starts by READING: pause the slideshow and re-scan the
+// receiver's progress code so this loop resends exactly what is missing now.
+// A fresh sighting (seen counter advanced) or a 3s timeout ends the pause.
+function startScanPhase() {
+  if (finished) return;
+  if (!camStream) { applyAck(); return; } // no camera on this side: nothing to read
+  clearInterval(timer); timer = null;
+  scanning = true;
+  scanBaseline = ackSeen;
+  scanUntil = performance.now() + 3000;
+  status.textContent = 'reading the receiver progress code before loop ' + loop + '…';
+}
+function applyAck() {
+  if (ack) {
+    if (ack.complete) { finish(); return; }
+    const idxs = ack.headerMissing ? [0].concat(ack.missing) : ack.missing.slice();
+    groupsNow = buildGroups(idxs.length ? idxs : allIdx);
+    setRate(P.retryFps);
+  }
+  restart();
+}
+function finish() {
+  finished = true; scanning = false; clearInterval(timer);
+  status.textContent = '✓ receiver confirmed the whole file — you can close both windows';
+  status.className = 'ok';
+  camstat.textContent = '';
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+}
+// The slider is a manual override within its min/max; the true frame rate lives
+// in 'rate' so CLI --fps / --retry-fps outside that band (e.g. 0.5) still take
+// effect instead of being clamped to whole steps by the input element.
+const fpsIn = document.getElementById('fps'); let rate = P.fps;
+function reflectRate() {
+  fpsIn.value = Math.min(+fpsIn.max, Math.max(+fpsIn.min, Math.round(rate)));
+  document.getElementById('fpsv').textContent = rate;
+}
+function restart() { clearInterval(timer); reflectRate();
+  if (playing && !finished && !scanning) timer = setInterval(draw, 1000 / rate); }
+function setRate(n) { rate = +n; }
+fpsIn.oninput = () => { rate = +fpsIn.value; restart(); };
 document.getElementById('toggle').onclick = e => { playing = !playing;
   e.target.textContent = playing ? 'pause' : 'play'; restart(); };
 draw(); restart();
+// This machine's camera watches the receiver page for its progress QR and
+// reports it to the CLI. Polls fast during a loop-start scan phase, lazily
+// while the slideshow runs (still catches "complete" early).
+async function watchAcks() {
+  const camVideo = document.getElementById('cam');
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 } } });
+  } catch (e) {
+    camstat.textContent = 'no camera on this side (' + e.message + ') — re-showing every chunk each loop';
+    camVideo.remove(); return;
+  }
+  camVideo.srcObject = camStream;
+  await new Promise(r => camVideo.onloadedmetadata = r);
+  const work = document.createElement('canvas');
+  const scale = Math.min(1, 800 / camVideo.videoWidth);
+  work.width = Math.round(camVideo.videoWidth * scale);
+  work.height = Math.round(camVideo.videoHeight * scale);
+  const wctx = work.getContext('2d', { willReadFrequently: true });
+  camstat.textContent = 'camera on: reads the receiver progress code at each loop start (bottom-right preview)';
+  while (!finished) {
+    const t0 = performance.now();
+    wctx.drawImage(camVideo, 0, 0, work.width, work.height);
+    const img = wctx.getImageData(0, 0, work.width, work.height);
+    try {
+      const r = await fetch('/ack?w=' + work.width + '&h=' + work.height,
+        { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: img.data.buffer });
+      if (r.ok) {
+        const s = await r.json();
+        if (s.seen !== undefined) ackSeen = s.seen;
+        if (s.hasAck) {
+          ack = s;
+          if (s.complete) { finish(); break; }
+          camstat.textContent = 'receiver has ' + s.received + '/' + s.total +
+            (s.missingCount ? ' — next loop resends ' + s.missingCount + ' missing at ' + P.retryFps + ' fps' : '');
+        }
+      }
+    } catch (e) { /* CLI stopped; keep showing the loop */ }
+    if (scanning && (ackSeen > scanBaseline || performance.now() > scanUntil)) {
+      scanning = false;
+      applyAck();
+    }
+    await new Promise(r2 => setTimeout(r2, Math.max(0, (scanning ? 200 : 500) - (performance.now() - t0))));
+  }
+}
+watchAcks();
 </script></body></html>`;

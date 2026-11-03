@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
+import { devNull } from "node:os";
 import { promisify } from "node:util";
 import { GitFerryError } from "./errors.js";
 
 const execFileP = promisify(execFile);
 
-/** Large diffs are common; allow up to 512 MB of git output. */
-const MAX_BUFFER = 512 * 1024 * 1024;
+/** Large diffs are common; allow up to 64 MB of git output. */
+const MAX_BUFFER = 64 * 1024 * 1024;
 
 export class GitError extends Error {
   constructor(
@@ -21,9 +22,12 @@ export class GitError extends Error {
 /** Run git in `cwd`, return stdout with the trailing newline stripped. Throws GitError on failure. */
 export async function git(cwd: string, args: string[]): Promise<string> {
   try {
-    const { stdout } = await execFileP("git", args, {
+    const { stdout } = await execFileP("git", ["-c", `core.hooksPath=${devNull}`, "-c", "core.protectNTFS=true", "-c", "core.protectHFS=true", "-c", "commit.gpgsign=false", "-c", "core.fsmonitor=false", ...args], {
       cwd,
       maxBuffer: MAX_BUFFER,
+      timeout: 120_000,
+      killSignal: "SIGKILL",
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
       encoding: "utf8",
     });
     return stdout.replace(/\n$/, "");
@@ -57,7 +61,7 @@ export async function repoRoot(cwd: string): Promise<string> {
 
 /** Resolve any ref/expression to a full commit sha. */
 export async function resolveCommit(cwd: string, ref: string): Promise<string> {
-  const sha = await tryGit(cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  const sha = await tryGit(cwd, ["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref}^{commit}`]);
   if (!sha) {
     throw new GitFerryError(`cannot resolve '${ref}' to a commit`, "check the ref name / sha");
   }

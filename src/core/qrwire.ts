@@ -6,24 +6,39 @@ import { GitFerryError } from "./errors.js";
  * so the receiver always knows which piece it is looking at and how many exist:
  *
  *   bytes 0-2   magic "GFQ"
- *   byte  3     kind: 0 = header frame, 1 = data frame
+ *   byte  3     kind: 0 = header frame, 1 = data frame, 2 = ack frame
  *   bytes 4-7   transferId: first 4 bytes of the file's sha256
- *   bytes 8-9   index (uint16 BE): 0 for the header frame, 1..total for data
+ *   bytes 8-9   index (uint16 BE): 0 for the header frame, 1..total for data,
+ *               received-count for an ack
  *   bytes 10-11 total (uint16 BE): number of data frames in this transfer
  *   bytes 12..  payload
  *
  * The header frame's payload is JSON metadata (name, size, sha256, chunk size),
  * so completeness is provable: all indices 1..total received + sha256 matches.
+ *
+ * The ack frame travels the OTHER way: the receiver renders it as its own QR so
+ * the sender's camera can see what already arrived and re-loop only the rest.
+ * Its payload is 1 flags byte (bit0 = header received, bit1 = complete) followed
+ * by a received-bitmap: bit (i-1) set = data frame i received, MSB-first.
  */
 
 export const FRAME_OVERHEAD = 12;
 /** QR version 40 @ L holds 2953 bytes; leave headroom for the frame header. */
 export const MAX_CHUNK = 2900;
 export const MAX_FRAMES = 65535;
+/**
+ * The ack QR is rendered at ECC "Q", whose version-40 byte capacity is 1663.
+ * An ack frame larger than this cannot be drawn as a single code, so `ackFrame`
+ * returns null past it and the sender falls back to re-looping every chunk.
+ */
+export const MAX_ACK_FRAME_BYTES = 1663;
 
 const MAGIC = [0x47, 0x46, 0x51]; // "GFQ"
 const KIND_HEADER = 0;
 const KIND_DATA = 1;
+const KIND_ACK = 2;
+const ACK_FLAG_HEADER = 1;
+const ACK_FLAG_COMPLETE = 2;
 
 export interface TransferHeader {
   v: 1;
@@ -40,12 +55,23 @@ export interface TransferHeader {
 }
 
 export interface Frame {
-  kind: "header" | "data";
+  kind: "header" | "data" | "ack";
   /** hex of the 4 transferId bytes */
   transferId: string;
   index: number;
   total: number;
   payload: Uint8Array;
+}
+
+/** What a receiver's ack QR told the sender. */
+export interface AckInfo {
+  transferId: string;
+  total: number;
+  received: number;
+  /** data frame indices (1-based) the receiver still needs */
+  missing: number[];
+  headerMissing: boolean;
+  complete: boolean;
 }
 
 /** Split a payload into QR frame byte strings: [header, data 1, ..., data N]. */
@@ -100,13 +126,32 @@ export function parseFrame(bytes: Uint8Array): Frame | null {
   if (bytes.byteLength < FRAME_OVERHEAD) return null;
   if (bytes[0] !== MAGIC[0] || bytes[1] !== MAGIC[1] || bytes[2] !== MAGIC[2]) return null;
   const kind = bytes[3];
-  if (kind !== KIND_HEADER && kind !== KIND_DATA) return null;
+  if (kind !== KIND_HEADER && kind !== KIND_DATA && kind !== KIND_ACK) return null;
   return {
-    kind: kind === KIND_HEADER ? "header" : "data",
+    kind: kind === KIND_HEADER ? "header" : kind === KIND_DATA ? "data" : "ack",
     transferId: Buffer.from(bytes.subarray(4, 8)).toString("hex"),
     index: (bytes[8] << 8) | bytes[9],
     total: (bytes[10] << 8) | bytes[11],
     payload: bytes.subarray(FRAME_OVERHEAD),
+  };
+}
+
+/** Read an ack frame's flags + received-bitmap; null if it is not a valid ack. */
+export function parseAck(frame: Frame): AckInfo | null {
+  if (frame.kind !== "ack" || frame.total < 1) return null;
+  if (frame.payload.byteLength < 1 + Math.ceil(frame.total / 8)) return null;
+  const flags = frame.payload[0];
+  const missing: number[] = [];
+  for (let i = 1; i <= frame.total; i++) {
+    if (!(frame.payload[1 + ((i - 1) >> 3)] & (0x80 >> ((i - 1) & 7)))) missing.push(i);
+  }
+  return {
+    transferId: frame.transferId,
+    total: frame.total,
+    received: frame.total - missing.length,
+    missing,
+    headerMissing: !(flags & ACK_FLAG_HEADER),
+    complete: Boolean(flags & ACK_FLAG_COMPLETE),
   };
 }
 
@@ -135,6 +180,7 @@ export class Assembler {
 
   /** Feed one parsed frame. Returns true if it advanced the transfer. */
   add(frame: Frame): boolean {
+    if (frame.kind === "ack") return false; // acks flow receiver -> sender only
     if (this.transferId === undefined) this.transferId = frame.transferId;
     if (frame.transferId !== this.transferId) {
       this.foreign++;
@@ -172,6 +218,32 @@ export class Assembler {
       complete,
       foreignFrames: this.foreign,
     };
+  }
+
+  /**
+   * Build the ack frame this receiver should display back at the sender.
+   * Deliberately tiny (flags + bitmap) so its QR stays low-version and easy to
+   * scan across the gap. Null until the first frame reveals the transfer, or if
+   * the transfer is too large for the bitmap to fit one QR.
+   */
+  ackFrame(): Uint8Array | null {
+    if (this.transferId === undefined || this.total === 0) return null;
+    const bitmapLen = Math.ceil(this.total / 8);
+    if (FRAME_OVERHEAD + 1 + bitmapLen > MAX_ACK_FRAME_BYTES) return null;
+    const payload = new Uint8Array(1 + bitmapLen);
+    payload[0] =
+      (this.header ? ACK_FLAG_HEADER : 0) |
+      (this.header && this.chunks.size === this.total ? ACK_FLAG_COMPLETE : 0);
+    for (const i of this.chunks.keys()) {
+      payload[1 + ((i - 1) >> 3)] |= 0x80 >> ((i - 1) & 7);
+    }
+    return buildFrame(
+      KIND_ACK,
+      Buffer.from(this.transferId, "hex"),
+      Math.min(this.chunks.size, MAX_FRAMES),
+      this.total,
+      payload,
+    );
   }
 
   /** Reassemble and verify. Throws unless progress().complete and sha256 matches. */

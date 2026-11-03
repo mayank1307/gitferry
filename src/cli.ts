@@ -33,6 +33,15 @@ program
   .description("Portable git-change bundles for air-gapped repos: pack changes here, apply them there.")
   .version(VERSION);
 
+// Standard npm MCP registry launchers select the package's main executable.
+// Keep this route silent: stdout belongs exclusively to the MCP transport.
+program
+  .command("mcp")
+  .description("start the local MCP server over stdio")
+  .action(async () => {
+    await import("./mcp.js");
+  });
+
 program
   .command("pack")
   .description("bundle unpushed commits, working-tree changes, and untracked files into a single .gitferry file")
@@ -43,6 +52,7 @@ program
   .option("--no-commits", "exclude unpushed commits")
   .option("--no-worktree", "exclude staged/unstaged changes")
   .option("--no-untracked", "exclude untracked files")
+  .option("--portable", "write a plain zip (~30% bigger) that any `unzip` can open — for target devices without gitferry")
   .action(async (opts) => {
     let selection: Selection | undefined;
     if (opts.only) {
@@ -69,6 +79,8 @@ program
       includeUnstaged: inc.includeUnstaged,
       includeWorktree: opts.worktree,
       includeUntracked: (inc.includeUntracked ?? true) && opts.untracked,
+      includeRepoFiles: inc.includeRepoFiles,
+      portable: Boolean(opts.portable),
     });
     printWarnings(result.warnings);
     printManifestSummary(result.manifest);
@@ -118,26 +130,49 @@ program
   .command("show")
   .argument("<file>", "file to transmit (usually a .gitferry bundle)")
   .description("display a file as a looping sequence of numbered QR codes — receive with `gitferry read`")
-  .option("--chunk <bytes>", `payload bytes per QR frame, 16-${MAX_CHUNK} (default: 300 terminal, 800 browser)`)
-  .option("--fps <n>", "QR frames per second (default: 2 terminal, 4 browser)")
-  .option("--browser", "show in a local browser page instead of the terminal (bigger, denser)")
+  .option("--chunk <bytes>", `payload bytes per QR frame, 16-${MAX_CHUNK} (default 150 — a coarse, easy-scan QR; raise for speed if your camera copes)`)
+  .option("--fps <n>", "QR frames per second for the first loop (default: 2 terminal, 4 browser)")
+  .option("--retry-fps <n>", "slower rate for re-loops once the receiver's progress code says what is missing (--browser only)", "1")
+  .option("--browser", "show in a local browser page instead of the terminal (bigger, denser, watches for the receiver's progress code)")
   .option("--color", "experimental: 3x density by packing 3 chunks into the R/G/B channels of each image (implies --browser)")
   .option("--port <n>", "port for the --browser page (default: random)", "0")
   .option("--no-open", "print the --browser URL without opening it")
   .action(async (file: string, opts) => {
     const browser = Boolean(opts.browser || opts.color);
-    const chunk = opts.chunk ? Number(opts.chunk) : browser ? 800 : 300;
+    // Coarse default density: 150 B + 12 B header ≈ QR version 8 (49x49
+    // modules). Webcams reading another PC's screen fail on fine modules
+    // (focus, moire, glare) long before they fail on frame count — and the
+    // ack loop re-sends whatever still slips through. --chunk raises density.
+    const chunk = opts.chunk ? Number(opts.chunk) : 150;
     const fps = opts.fps ? Number(opts.fps) : browser ? 4 : 2;
-    if (!Number.isFinite(chunk) || !Number.isFinite(fps) || fps <= 0) {
-      throw new GitFerryError("--chunk and --fps must be numbers");
+    const retryFps = Number(opts.retryFps);
+    if (!Number.isFinite(chunk) || !Number.isFinite(fps) || fps <= 0 || !Number.isFinite(retryFps) || retryFps <= 0) {
+      throw new GitFerryError("--chunk, --fps, and --retry-fps must be positive numbers");
     }
     const plan = prepareShow(file, { chunk, color: Boolean(opts.color) });
     if (browser) {
-      const { url } = await runBrowserShow(plan, { fps, port: Number(opts.port), open: opts.open });
+      let lastLine = 0;
+      const { url, close, done } = await runBrowserShow(plan, {
+        fps,
+        retryFps,
+        port: Number(opts.port),
+        open: opts.open,
+        onAck: (a) => {
+          if (!process.stdout.isTTY || a.complete) return;
+          const line = `  receiver has ${a.received}/${a.total} · re-looping ${a.missing.length} missing at ${retryFps} fps`;
+          process.stdout.write(`\r${line}${" ".repeat(Math.max(0, lastLine - line.length))}`);
+          lastLine = line.length;
+        },
+      });
       console.log(`${bold(plan.fileName)} · ${formatBytes(plan.byteSize)} · ${plan.dataFrames} chunks${plan.color ? cyan(" · color mode") : ""}`);
-      console.log(`${green("✓")} showing at ${bold(url)} ${dim("(loops until you Ctrl+C)")}`);
+      console.log(`${green("✓")} showing at ${bold(url)} ${dim("(loops until the receiver confirms, or Ctrl+C)")}`);
       console.log(dim("  on the other machine: gitferry read — point its camera at that page"));
-      await new Promise<never>(() => {});
+      console.log(dim("  if this machine has a camera, point it at the receiver page: after each loop only the missing chunks are re-shown"));
+      const finalAck = await done;
+      if (process.stdout.isTTY) process.stdout.write("\n");
+      console.log(`${green("✓")} receiver confirmed all ${finalAck.total} chunks — transfer complete`);
+      close();
+      process.exit(0);
     } else {
       await runTerminalShow(plan, fps);
     }
@@ -158,7 +193,10 @@ program
       port: Number(opts.port),
       open: opts.open,
       force: Boolean(opts.force),
-      onListen: (url) => console.log(`  camera page: ${bold(url)} ${dim("(open it on a machine with a webcam — this one)")}`),
+      onListen: (url) => {
+        console.log(`  camera page: ${bold(url)} ${dim("(open it on a machine with a webcam — this one)")}`);
+        console.log(dim("  the page also shows a progress code — keep it visible to the sender's camera and it will re-loop only what is missing"));
+      },
       onProgress: (p) => {
         if (!process.stdout.isTTY) return;
         const line =
@@ -224,6 +262,9 @@ function printManifestSummary(m: Manifest): void {
   if (contents.untracked.length > 0) {
     console.log(`  untracked ${contents.untracked.length}`);
     for (const p of contents.untracked) console.log(dim(`    ${p}`));
+  }
+  if (contents.repoFiles && contents.repoFiles.length > 0) {
+    console.log(`  snapshot ${contents.repoFiles.length} tracked files ${dim("(whole repo, applied by file copy)")}`);
   }
 }
 
