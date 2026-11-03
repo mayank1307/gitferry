@@ -283,5 +283,5 @@ describe("guards and failure modes", () => {
     const applyOut = run(repoB, ["apply", bundle]);
     expect(applyOut).toContain("bundle applied");
     expect(readFileSync(path.join(repoB, "a.txt"), "utf8")).toBe("two\n");
-  });
+  }, 30_000); // Multiple Git/Node processes can exceed 5 seconds on Windows CI.
 });

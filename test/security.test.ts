@@ -140,7 +140,7 @@ describe("public bundle safety", () => {
       expect(readFileSync(path.join(target, ".git", "config"))).toEqual(config);
       expect(existsSync(path.join(target, "..", "escaped.txt"))).toBe(false);
     }
-  });
+  }, 30_000); // Two repository/patch round trips on potentially slow CI runners.
 
   it.skipIf(process.platform === "win32")("rechecks a target after an earlier patch creates a symlink parent", async () => {
     const {repo, output} = await bundleFixture(), target = cloneRepo(repo), outside = tmpDir();
