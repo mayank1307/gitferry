@@ -2,7 +2,11 @@
 
 GitFerry uses local stdio: the MCP client launches one server process and exchanges protocol messages on stdin/stdout. This follows the [MCP TypeScript SDK's local server transport](https://ts.sdk.modelcontextprotocol.io/server). No listening port or HTTP endpoint is configured. Repositories and bundle paths refer to the server's filesystem.
 
-For the released package, run `npm install -g gitferry@0.4.1` or use the pinned `npx` client configuration below. See [INSTALL.md](../INSTALL.md#mcp-client-setup) for Claude Code, VS Code, and Windows setup. Offline bundles are available from the [public v0.4.1 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1).
+For the released package, run `npm install -g gitferry@0.4.1` or use the pinned `npx` client configuration below. See [INSTALL.md](../INSTALL.md#mcp-client-setup) for Codex, Claude Code, VS Code, and Windows setup, including an [agent-assisted setup prompt](../INSTALL.md#agent-assisted-installation). Offline bundles are available from the [public v0.4.1 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1).
+
+Installing a package or building a checkout supplies the executable; registering it in an MCP client saves how that client launches it. Neither operation by itself proves the tools are available in an existing session. Register the server, reconnect the client, and confirm all three tools are discovered. With the pinned `npx` launcher, package download happens on first launch and global installation is optional.
+
+For Codex, use `codex mcp add gitferry -- npx --yes --package=gitferry@0.4.1 gitferry-mcp`, or merge [examples/mcp/codex.toml](../examples/mcp/codex.toml) into its TOML configuration. See [Codex setup](../INSTALL.md#codex) for saved-configuration checks and session verification.
 
 ## Build and validate a checkout
 

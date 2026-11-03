@@ -1,0 +1,3 @@
+[mcp_servers.gitferry]
+command = "npx"
+args = ["--yes", "--package=gitferry@0.4.1", "gitferry-mcp"]

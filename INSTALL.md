@@ -14,6 +14,34 @@ gitferry --help
 
 ## MCP client setup
 
+### Installation versus registration
+
+`npm install -g gitferry@0.4.1` installs the CLI and MCP server executables. It does not add the server to any MCP client. Registration saves the launch command in the selected client's configuration; reconnecting that client starts the local server and discovers its tools.
+
+Choose one launch method: pinned `npx` (downloads the package on first launch), globally installed `gitferry-mcp`, or `node` with an absolute standalone file path. Then register that command in each client you want to use. For the pinned `npx` examples below, no separate global installation is needed. Codex CLI or Claude Code must already be installed to use their registration commands.
+
+### Codex
+
+Register and inspect the pinned local server:
+
+```bash
+codex mcp add gitferry -- npx --yes --package=gitferry@0.4.1 gitferry-mcp
+codex mcp get gitferry
+codex mcp list
+```
+
+Alternatively, merge [examples/mcp/codex.toml](examples/mcp/codex.toml) into `~/.codex/config.toml`, preserving other settings and any existing server entries. Use this configuration method instead of adding a second GitFerry entry:
+
+```toml
+[mcp_servers.gitferry]
+command = "npx"
+args = ["--yes", "--package=gitferry@0.4.1", "gitferry-mcp"]
+```
+
+For a global installation, use `codex mcp add gitferry -- gitferry-mcp`. For an offline standalone file, use `codex mcp add gitferry -- node /absolute/path/to/gitferry-mcp.cjs`. Choose one method. GitFerry uses local stdio and does not need `codex mcp login` or OAuth.
+
+Reconnect or start a new Codex session. In the CLI, use `/mcp` to inspect active servers and their tools. `codex mcp get` and `codex mcp list` check saved registration; they do not establish that the current session has discovered tools. See the [official OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mcp) for configuration locations and client-specific reconnection steps.
+
 ### Clients using `mcpServers` JSON
 
 Global installation is optional. Merge the following server entry into your client’s MCP configuration (preserve any existing servers), or copy [examples/mcp/npm.json](examples/mcp/npm.json):
@@ -61,6 +89,14 @@ For VS Code’s workspace MCP configuration, merge [examples/mcp/vscode.json](ex
 ```
 
 Use the server controls in the MCP configuration editor to start it. See the [VS Code MCP configuration reference](https://code.visualstudio.com/docs/agents/reference/mcp-configuration) for workspace and user-profile formats.
+
+### Agent-assisted installation
+
+Ask Codex or Claude Code to perform setup using this prompt:
+
+> Set up GitFerry v0.4.1 as a local stdio MCP server in this client using https://github.com/mayank1307/gitferry/blob/main/INSTALL.md. Check Node.js 22+ and Git 2.32+. Check for an existing GitFerry registration, preserve other servers, and register the pinned npx command for this client. A global npm install is optional. Verify the saved configuration, then verify that pack_changes, inspect_bundle, and apply_bundle are available. If a restart or new session is needed, tell me what to do and verify tool discovery afterward.
+
+The agent needs terminal/configuration access and the client's normal approvals. Without that access it can provide the commands for you to run. Reading installation instructions alone does not automatically register or activate the MCP server.
 
 ### Connect and verify
 

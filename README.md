@@ -40,6 +40,8 @@ gitferry --version
 
 For MCP-only use, skip the global install and use the pinned `npx` configuration in [MCP server](#mcp-server).
 
+**Installation and MCP registration are separate steps.** Installing the npm package makes `gitferry` and `gitferry-mcp` available in your terminal. Registering the server tells Codex, Claude Code, or another MCP client how to launch it. With `npx`, the client downloads the pinned package on first launch, so a global install is optional. Reading this README or installing the package alone does not register the server.
+
 ### Closed environments (no npm)
 
 Download `gitferry.cjs`, `gitferry-mcp.cjs`, and `SHA256SUMS` from the [public v0.4.1 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1). These standalone files include their JavaScript dependencies; transfer them to the offline machine with Node and Git. See [INSTALL.md](INSTALL.md#offline-installation) for checksum verification and setup.
@@ -121,6 +123,20 @@ On conflicts you get standard git conflict markers and clear instructions (`git 
 
 GitFerry runs locally over **stdio**. Your MCP client starts the process, and it works with repositories on that same machine. No GitFerry account, API key, hosted service, or source upload is required. URL-only MCP clients need a separate bridge and cannot connect directly to this local server.
 
+Register with the CLI for your client (requires Codex CLI or Claude Code, respectively):
+
+```bash
+# Codex
+codex mcp add gitferry -- npx --yes --package=gitferry@0.4.1 gitferry-mcp
+codex mcp get gitferry
+
+# Claude Code
+claude mcp add --transport stdio gitferry -- npx --yes --package=gitferry@0.4.1 gitferry-mcp
+claude mcp get gitferry
+```
+
+Choose your client's registration command, reconnect or start a new session, and verify that `pack_changes`, `inspect_bundle`, and `apply_bundle` are available. `mcp get` confirms the saved configuration; tool discovery in the connected client confirms the server is working. See [Codex setup](INSTALL.md#codex) for the TOML alternative and [agent-assisted installation](#agent-assisted-installation) to delegate setup.
+
 Use this configuration for the published 0.4.1 package in clients that accept `mcpServers` JSON. The explicit executable matters because this package supplies both a CLI and an MCP server:
 
 ```json
@@ -147,7 +163,7 @@ For a source checkout, build with `npm ci && npm run bundle` and use:
 }
 ```
 
-If you installed the package globally, the server command is `gitferry-mcp`. For a downloaded offline bundle, point `node` directly at `/absolute/path/to/gitferry-mcp.cjs`. See [client setup](INSTALL.md#mcp-client-setup) for Claude Code and VS Code examples and Windows launch instructions.
+If you installed the package globally, the server command is `gitferry-mcp`. For a downloaded offline bundle, point `node` directly at `/absolute/path/to/gitferry-mcp.cjs`. See [client setup](INSTALL.md#mcp-client-setup) for Codex, Claude Code, and VS Code examples and Windows launch instructions.
 
 | Tool | Action | Key arguments |
 |------|--------|---------------|
@@ -160,6 +176,14 @@ Use absolute paths. Start with: *“Pack the uncommitted changes in /absolute/pa
 `only` accepts `all`, `uncommitted`, `staged`, `unstaged`, `committed`, or `repo`. Snapshot mode (`repo`) carries current tracked-file contents rather than history; it can seed an empty directory. The default without a selection includes all change categories, matching non-interactive CLI use. Tool annotations describe side effects to the client; they do not enforce approvals or restrict filesystem access.
 
 See [INSTALL.md](INSTALL.md) for setup and offline transfer, [DEMO.md](DEMO.md) for a two-repository walkthrough, and [PUBLISHING.md](PUBLISHING.md) for maintainer release steps. Published registry identity: [`io.github.mayank1307/gitferry`](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.1).
+
+### Agent-assisted installation
+
+Paste this into Codex or Claude Code with terminal and configuration access:
+
+> Set up GitFerry v0.4.1 as a local stdio MCP server in this client using https://github.com/mayank1307/gitferry/blob/main/INSTALL.md. Check Node.js 22+ and Git 2.32+. Check for an existing GitFerry registration, preserve other servers, and register the pinned npx command for this client. A global npm install is optional. Verify the saved configuration, then verify that pack_changes, inspect_bundle, and apply_bundle are available. If a restart or new session is needed, tell me what to do and verify tool discovery afterward.
+
+The agent can perform setup when asked and given the required access. Package download happens automatically through `npx` after registration; client approvals and reconnection follow the client's normal behavior.
 
 ## Bundle format
 
