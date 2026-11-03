@@ -1,6 +1,6 @@
 # gitferry
 
-**v0.4.0 is released.** [npm package](https://www.npmjs.com/package/gitferry/v/0.4.0) · [v0.4.0 release and downloads](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0) · [MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.0)
+**v0.4.1 is released.** [npm package](https://www.npmjs.com/package/gitferry/v/0.4.1) · [v0.4.1 release and downloads](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1) · [MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.1)
 
 **Portable git-change bundles for air-gapped repos.** Pack your unpushed commits, staged/unstaged changes, and untracked files into a single shareable file on one machine — carry it across the air gap (USB, secure file transfer, email, or QR codes across a webcam) — validate and apply it to the same repo on another machine. No shared remote, no network, no sync required.
 
@@ -34,7 +34,7 @@ You can — gitferry *uses* them under the hood. What raw git doesn't give you:
 Requires **Node.js 22 or newer** and **Git 2.32 or newer**. Install the published CLI and MCP server from npm:
 
 ```bash
-npm install -g gitferry@0.4.0
+npm install -g gitferry@0.4.1
 gitferry --version
 ```
 
@@ -42,7 +42,7 @@ For MCP-only use, skip the global install and use the pinned `npx` configuration
 
 ### Closed environments (no npm)
 
-Download `gitferry.cjs`, `gitferry-mcp.cjs`, and `SHA256SUMS` from the [public v0.4.0 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0). These standalone files include their JavaScript dependencies; transfer them to the offline machine with Node and Git. See [INSTALL.md](INSTALL.md#offline-installation) for checksum verification and setup.
+Download `gitferry.cjs`, `gitferry-mcp.cjs`, and `SHA256SUMS` from the [public v0.4.1 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1). These standalone files include their JavaScript dependencies; transfer them to the offline machine with Node and Git. See [INSTALL.md](INSTALL.md#offline-installation) for checksum verification and setup.
 
 To build the same standalone executables from a source checkout:
 
@@ -121,14 +121,14 @@ On conflicts you get standard git conflict markers and clear instructions (`git 
 
 GitFerry runs locally over **stdio**. Your MCP client starts the process, and it works with repositories on that same machine. No GitFerry account, API key, hosted service, or source upload is required. URL-only MCP clients need a separate bridge and cannot connect directly to this local server.
 
-Use this configuration for the published 0.4.0 package in clients that accept `mcpServers` JSON. The explicit executable matters because this package supplies both a CLI and an MCP server:
+Use this configuration for the published 0.4.1 package in clients that accept `mcpServers` JSON. The explicit executable matters because this package supplies both a CLI and an MCP server:
 
 ```json
 {
   "mcpServers": {
     "gitferry": {
       "command": "npx",
-      "args": ["--yes", "--package=gitferry@0.4.0", "gitferry-mcp"]
+      "args": ["--yes", "--package=gitferry@0.4.1", "gitferry-mcp"]
     }
   }
 }
@@ -159,7 +159,7 @@ Use absolute paths. Start with: *“Pack the uncommitted changes in /absolute/pa
 
 `only` accepts `all`, `uncommitted`, `staged`, `unstaged`, `committed`, or `repo`. Snapshot mode (`repo`) carries current tracked-file contents rather than history; it can seed an empty directory. The default without a selection includes all change categories, matching non-interactive CLI use. Tool annotations describe side effects to the client; they do not enforce approvals or restrict filesystem access.
 
-See [INSTALL.md](INSTALL.md) for setup and offline transfer, [DEMO.md](DEMO.md) for a two-repository walkthrough, and [PUBLISHING.md](PUBLISHING.md) for maintainer release steps. Published registry identity: [`io.github.mayank1307/gitferry`](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.0).
+See [INSTALL.md](INSTALL.md) for setup and offline transfer, [DEMO.md](DEMO.md) for a two-repository walkthrough, and [PUBLISHING.md](PUBLISHING.md) for maintainer release steps. Published registry identity: [`io.github.mayank1307/gitferry`](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.1).
 
 ## Bundle format
 

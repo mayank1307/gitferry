@@ -15,6 +15,8 @@ The tagged release passed CI on Node 22/24 across Linux, macOS, and Windows, and
 
 The registry name is `io.github.mayank1307/gitferry`. GitHub OIDC supplies registry namespace ownership in Actions. The `mcpName` field must match server.json before the npm artifact is published.
 
+Version 0.4.1 is the first release being published entirely through the configured GitHub Actions trusted publisher. Its successful npm publication will validate the pending connection.
+
 ## Configured npm trusted publisher
 
 | Setting | Saved value |
@@ -58,7 +60,7 @@ npm run release:artifacts
 
 `release:check` validates the vendored official registry schema and all version locations, builds from a clean dist directory, runs tests, packs the actual npm artifact, installs it in an isolated temporary project, and connects to every shipped MCP entry point. The package smoke check downloads production dependencies from npm and requires network access. It cleans up its temporary directory.
 
-`release:artifacts` produces `release/gitferry-0.4.0.tgz`, `release/gitferry.cjs`, `release/gitferry-mcp.cjs`, `release/server.json`, and SHA256SUMS. It does not publish. Verify the checksums from inside release/ using `shasum -a 256 -c SHA256SUMS` (macOS) or `sha256sum -c SHA256SUMS` (Linux).
+`release:artifacts` produces `release/gitferry-0.4.1.tgz`, `release/gitferry.cjs`, `release/gitferry-mcp.cjs`, `release/server.json`, and SHA256SUMS. It does not publish. Verify the checksums from inside release/ using `shasum -a 256 -c SHA256SUMS` (macOS) or `sha256sum -c SHA256SUMS` (Linux).
 
 Review the intended diff, ensure clean-machine CI passes on all six Node/OS combinations, and try DEMO.md before release. Keep unrelated existing work out of the release commit. Local execution on one OS does not establish cross-platform success.
 

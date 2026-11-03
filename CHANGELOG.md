@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 3 November 2026
+
+- Publish through GitHub Actions using the configured npm trusted publisher, alongside MCP Registry metadata and checksummed GitHub release assets.
+- Update public release links, npm installation instructions, and Claude Code, VS Code, Windows, and offline MCP setup examples.
+- Stabilize slow Windows CI runs with longer timeouts for two Git integration tests that launch multiple processes.
+- Document the trusted publisher scope and release maintenance procedure.
+
 ## 0.4.0 — 3 November 2026
 
 - Separate MCP tool registration into an importable server factory; add architecture/deployment guides, client configuration examples, and an optional stdio Docker image.

@@ -2,12 +2,12 @@
 
 GitFerry requires **Node.js 22 or newer** and **Git 2.32 or newer**. It runs locally, including its MCP server. npm installation needs registry access for dependencies; the standalone files run offline.
 
-**v0.4.0 is publicly available.** [npm package](https://www.npmjs.com/package/gitferry/v/0.4.0) · [v0.4.0 release and downloads](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0) · [MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.0)
+**v0.4.1 is publicly available.** [npm package](https://www.npmjs.com/package/gitferry/v/0.4.1) · [v0.4.1 release and downloads](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1) · [MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.1)
 
 ## Online installation
 
 ```bash
-npm install -g gitferry@0.4.0
+npm install -g gitferry@0.4.1
 gitferry --version
 gitferry --help
 ```
@@ -23,7 +23,7 @@ Global installation is optional. Merge the following server entry into your clie
   "mcpServers": {
     "gitferry": {
       "command": "npx",
-      "args": ["--yes", "--package=gitferry@0.4.0", "gitferry-mcp"]
+      "args": ["--yes", "--package=gitferry@0.4.1", "gitferry-mcp"]
     }
   }
 }
@@ -38,7 +38,7 @@ Clients have different configuration locations and formats. Use their MCP settin
 Register the local server with a pinned npm package:
 
 ```bash
-claude mcp add --transport stdio gitferry -- npx --yes --package=gitferry@0.4.0 gitferry-mcp
+claude mcp add --transport stdio gitferry -- npx --yes --package=gitferry@0.4.1 gitferry-mcp
 claude mcp get gitferry
 ```
 
@@ -54,7 +54,7 @@ For VS Code’s workspace MCP configuration, merge [examples/mcp/vscode.json](ex
     "gitferry": {
       "type": "stdio",
       "command": "npx",
-      "args": ["--yes", "--package=gitferry@0.4.0", "gitferry-mcp"]
+      "args": ["--yes", "--package=gitferry@0.4.1", "gitferry-mcp"]
     }
   }
 }
@@ -66,11 +66,11 @@ Use the server controls in the MCP configuration editor to start it. See the [VS
 
 Restart or reconnect the client after configuration changes. Confirm it lists `pack_changes`, `inspect_bundle`, and `apply_bundle`. Provide absolute paths and start with a small disposable repository: “Pack the uncommitted changes in /absolute/path/to/repo into /absolute/path/to/transfer.gitferry.” Inspect the bundle and dry-run its application before applying it. No GitFerry API key or account is needed; these tools run on the client machine. The MCP Registry URL is discovery metadata, not an HTTP endpoint to paste into a URL-only client.
 
-On Windows, clients that cannot launch `npx` directly can use `"command": "cmd"` and `"args": ["/c", "npx", "--yes", "--package=gitferry@0.4.0", "gitferry-mcp"]`. The standalone Node configuration below is another option.
+On Windows, clients that cannot launch `npx` directly can use `"command": "cmd"` and `"args": ["/c", "npx", "--yes", "--package=gitferry@0.4.1", "gitferry-mcp"]`. The standalone Node configuration below is another option.
 
 ## Offline installation
 
-Download these files from the [public v0.4.0 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0) on a connected machine:
+Download these files from the [public v0.4.1 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.1) on a connected machine:
 
 - `gitferry.cjs` — standalone CLI
 - `gitferry-mcp.cjs` — standalone MCP server
@@ -100,20 +100,20 @@ Configure the local MCP server:
 
 On Windows, use an absolute path such as `C:\\Tools\\gitferry-mcp.cjs` in JSON. The server communicates over stdin/stdout and normally waits silently; verify connection through your MCP client rather than expecting a web page.
 
-A `.tgz` from `npm pack` contains GitFerry but does **not** embed its npm dependencies. Installing it with `npm install -g ./gitferry-0.4.0.tgz` can still contact the npm registry. Use the standalone `.cjs` files for a disconnected target.
+A `.tgz` from `npm pack` contains GitFerry but does **not** embed its npm dependencies. Installing it with `npm install -g ./gitferry-0.4.1.tgz` can still contact the npm registry. Use the standalone `.cjs` files for a disconnected target.
 
 ## Build from source
 
 ```bash
 git clone https://github.com/mayank1307/gitferry.git
 cd gitferry
-git checkout v0.4.0
+git checkout v0.4.1
 npm ci
 npm run bundle
 node dist/gitferry.cjs --version
 ```
 
-The standalone executables are generated in `dist/`. To develop against the latest source instead, stay on `main`; post-release documentation updates do not change the immutable v0.4.0 artifacts.
+The standalone executables are generated in `dist/`. To develop against the latest source instead, stay on `main`; post-release documentation updates do not change the immutable v0.4.1 artifacts.
 
 ## Target with only Git and unzip
 
