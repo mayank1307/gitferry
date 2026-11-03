@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "gitferry": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["--yes", "--package=gitferry@0.4.0", "gitferry-mcp"]
+    }
+  }
+}

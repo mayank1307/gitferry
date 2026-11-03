@@ -2,6 +2,8 @@
 
 GitFerry uses local stdio: the MCP client launches one server process and exchanges protocol messages on stdin/stdout. This follows the [MCP TypeScript SDK's local server transport](https://ts.sdk.modelcontextprotocol.io/server). No listening port or HTTP endpoint is configured. Repositories and bundle paths refer to the server's filesystem.
 
+For the released package, run `npm install -g gitferry@0.4.0` or use the pinned `npx` client configuration below. See [INSTALL.md](../INSTALL.md#mcp-client-setup) for Claude Code, VS Code, and Windows setup. Offline bundles are available from the [public v0.4.0 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0).
+
 ## Build and validate a checkout
 
 Install Node.js 22 or newer and Git 2.32 or newer, then run at the repository root:
@@ -23,7 +25,7 @@ Copy [examples/mcp/local.json](../examples/mcp/local.json) into a client's `mcpS
 
 ## npm installation
 
-After version 0.4.0 has been published, use [examples/mcp/npm.json](../examples/mcp/npm.json). It pins the package version and selects the MCP executable explicitly. A global installation can instead use the command `gitferry-mcp`. Source preparation does not publish anything; maintainers follow [PUBLISHING.md](../PUBLISHING.md) for npm and MCP Registry releases.
+Version 0.4.0 is published on [npm](https://www.npmjs.com/package/gitferry/v/0.4.0). Use [examples/mcp/npm.json](../examples/mcp/npm.json). It pins the package version and selects the MCP executable explicitly. A global installation can instead use the command `gitferry-mcp`. Source preparation does not publish anything; maintainers follow [PUBLISHING.md](../PUBLISHING.md) for npm and MCP Registry releases.
 
 ## Container installation
 

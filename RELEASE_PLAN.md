@@ -1,20 +1,20 @@
 # GitFerry public MCP release plan
 
-Prepared 31 October 2026 from the current working tree (package version 0.3.1).
+## Released — 3 November 2026
 
-## Implementation status — 0.4.0 candidate
+GitFerry 0.4.0 is published on [npm](https://www.npmjs.com/package/gitferry/v/0.4.0) and the [official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.0). The [source repository](https://github.com/mayank1307/gitferry) and [v0.4.0 release assets](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0) are public. The registry identity is `io.github.mayank1307/gitferry`.
 
-The local release preparation below has been implemented: reproducible packaging, npm and MCP Registry metadata, license and operating documentation, patched dependencies, bounded archive/path validation, safer writes, repository operation locks, MCP integration tests, an isolated package smoke check, and CI/release workflows. See [PUBLISHING.md](PUBLISHING.md) for the executable release procedure and [CHANGELOG.md](CHANGELOG.md) for the candidate changes.
+The release includes reproducible packaging, three local stdio MCP tools, an importable server factory, npm/registry metadata, installation and deployment examples, standalone offline bundles, archive/path protections, safer writes, repository operation locks, and CI/release workflows. See [INSTALL.md](INSTALL.md) for installation and client setup, [CHANGELOG.md](CHANGELOG.md) for release changes, and [PUBLISHING.md](PUBLISHING.md) for future release procedures.
 
-Publication remains pending. The public npm endpoint returned 404, so account ownership/name availability still needs maintainer verification. The GitHub repository also returned 404 to an unauthenticated request; make it public or confirm its intended public location. Configure npm trusted publishing, the GitHub release environment, and private vulnerability reporting, then run the six-platform CI matrix and an external-user demo before tagging. No npm package, registry entry, release tag, or GitHub release was published during preparation.
+Validation completed: all 81 tests passed locally; Node 22/24 CI passed on Linux, macOS, and Windows (platform-specific symlink/hook tests are skipped on Windows). A fresh public npm installation completed an MCP handshake and listed all three tools. Published npm bytes, registry metadata, and all five GitHub assets were verified. The release workflow completed successfully. Initial account publication was interactive; configure and verify OIDC before relying on it to publish a new version.
 
-The remaining sections preserve the original plan and its initial findings; they are not a list of current missing files.
+## Historical plan — 31 October 2026
 
-Local validation completed on macOS with Node 22.22.0: release metadata/schema checks, all 80 tests, isolated npm installation and all four MCP launch paths, standalone CLI walkthrough, dependency audit (zero vulnerabilities), fresh artifact generation, and whitespace checks. Node 24 and Linux/Windows execution are configured in CI and still require hosted results. Generated publication candidates are in `release/`; verify SHA256SUMS before transferring them.
+The sections below preserve the pre-release assessment and proposed work from version 0.3.1. References to missing files, unverified ownership, and proposed versions describe that earlier assessment, not current release status.
 
 ## Release decision
 
-Release a publicly installable **local stdio MCP server** first. GitFerry already exposes `pack_changes`, `inspect_bundle`, and `apply_bundle` in `src/mcp.ts`. These operations need the user's local repository and filesystem. Publish the package to npm and its discovery metadata to the official MCP Registry; each user runs their own server.
+Release a publicly installable **local stdio MCP server** first. GitFerry already exposes `pack_changes`, `inspect_bundle`, and `apply_bundle` in `src/mcp/server.ts`. These operations need the user's local repository and filesystem. Publish the package to npm and its discovery metadata to the official MCP Registry; each user runs their own server.
 
 This supports local MCP clients that can launch processes. A hosted URL would operate on the host's filesystem and would need a separate repository upload/checkout or local-agent design. URL-only clients therefore belong to a later release.
 

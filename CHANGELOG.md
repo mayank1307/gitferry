@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 — Unreleased
+## 0.4.0 — 3 November 2026
 
 - Separate MCP tool registration into an importable server factory; add architecture/deployment guides, client configuration examples, and an optional stdio Docker image.
 - Prepare GitFerry for public npm distribution and MCP Registry discovery as `io.github.mayank1307/gitferry`.

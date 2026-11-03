@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please do not put exploit bundles, credentials, or private source code in public issues. Use GitHub's **Report a vulnerability** option on the repository Security tab when private vulnerability reporting is enabled. If it is unavailable, open an issue asking the maintainer to provide a private reporting channel, without vulnerability details. Maintainers must enable and verify private reporting before public launch.
+Please do not put exploit bundles, credentials, or private source code in public issues. Use GitHub's **Report a vulnerability** option on the repository Security tab when private vulnerability reporting is enabled. If it is unavailable, open an issue asking the maintainer to provide a private reporting channel, without vulnerability details. Maintainers should enable and verify private reporting in the public repository’s settings.
 
 Security fixes target the latest released version. Pin a known-good package version, review release notes, and upgrade deliberately.
 

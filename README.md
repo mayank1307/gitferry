@@ -1,5 +1,7 @@
 # gitferry
 
+**v0.4.0 is released.** [npm package](https://www.npmjs.com/package/gitferry/v/0.4.0) · [v0.4.0 release and downloads](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0) · [MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.0)
+
 **Portable git-change bundles for air-gapped repos.** Pack your unpushed commits, staged/unstaged changes, and untracked files into a single shareable file on one machine — carry it across the air gap (USB, secure file transfer, email, or QR codes across a webcam) — validate and apply it to the same repo on another machine. No shared remote, no network, no sync required.
 
 ```
@@ -29,19 +31,24 @@ You can — gitferry *uses* them under the hood. What raw git doesn't give you:
 
 ## Install
 
+Requires **Node.js 22 or newer** and **Git 2.32 or newer**. Install the published CLI and MCP server from npm:
+
 ```bash
 npm install -g gitferry@0.4.0
+gitferry --version
 ```
+
+For MCP-only use, skip the global install and use the pinned `npx` configuration in [MCP server](#mcp-server).
 
 ### Closed environments (no npm)
 
-Requires Node.js 22 or newer and Git 2.32 or newer. The commands above target the upcoming 0.4.0 release; they work once it is published. To try this checkout now, run `npm ci && npm run bundle` and configure the local MCP entry point below.
+Download `gitferry.cjs`, `gitferry-mcp.cjs`, and `SHA256SUMS` from the [public v0.4.0 release](https://github.com/mayank1307/gitferry/releases/tag/v0.4.0). These standalone files include their JavaScript dependencies; transfer them to the offline machine with Node and Git. See [INSTALL.md](INSTALL.md#offline-installation) for checksum verification and setup.
 
-Build self-contained files and copy them anywhere Node.js 22 or newer exists:
+To build the same standalone executables from a source checkout:
 
 ```bash
 npm run bundle                 # → dist/gitferry.cjs + dist/gitferry-mcp.cjs
-node gitferry.cjs pack         # runs without any install or node_modules
+node dist/gitferry.cjs pack    # runs without any install or node_modules
 ```
 
 ## Usage
@@ -114,7 +121,7 @@ On conflicts you get standard git conflict markers and clear instructions (`git 
 
 GitFerry runs locally over **stdio**. Your MCP client starts the process, and it works with repositories on that same machine. No GitFerry account, API key, hosted service, or source upload is required. URL-only MCP clients need a separate bridge and cannot connect directly to this local server.
 
-After 0.4.0 is published, use this configuration in clients that accept `mcpServers` JSON. The explicit executable matters because this package supplies both a CLI and an MCP server:
+Use this configuration for the published 0.4.0 package in clients that accept `mcpServers` JSON. The explicit executable matters because this package supplies both a CLI and an MCP server:
 
 ```json
 {
@@ -127,7 +134,7 @@ After 0.4.0 is published, use this configuration in clients that accept `mcpServ
 }
 ```
 
-For a source checkout or offline installation, build with `npm run bundle` and use:
+For a source checkout, build with `npm ci && npm run bundle` and use:
 
 ```json
 {
@@ -140,7 +147,7 @@ For a source checkout or offline installation, build with `npm run bundle` and u
 }
 ```
 
-If you installed the package globally, the server command is `gitferry-mcp`.
+If you installed the package globally, the server command is `gitferry-mcp`. For a downloaded offline bundle, point `node` directly at `/absolute/path/to/gitferry-mcp.cjs`. See [client setup](INSTALL.md#mcp-client-setup) for Claude Code and VS Code examples and Windows launch instructions.
 
 | Tool | Action | Key arguments |
 |------|--------|---------------|
@@ -152,7 +159,7 @@ Use absolute paths. Start with: *“Pack the uncommitted changes in /absolute/pa
 
 `only` accepts `all`, `uncommitted`, `staged`, `unstaged`, `committed`, or `repo`. Snapshot mode (`repo`) carries current tracked-file contents rather than history; it can seed an empty directory. The default without a selection includes all change categories, matching non-interactive CLI use. Tool annotations describe side effects to the client; they do not enforce approvals or restrict filesystem access.
 
-See [INSTALL.md](INSTALL.md) for setup and offline transfer, [DEMO.md](DEMO.md) for a two-repository walkthrough, and [PUBLISHING.md](PUBLISHING.md) for maintainer release steps. Proposed registry identity: `io.github.mayank1307/gitferry`.
+See [INSTALL.md](INSTALL.md) for setup and offline transfer, [DEMO.md](DEMO.md) for a two-repository walkthrough, and [PUBLISHING.md](PUBLISHING.md) for maintainer release steps. Published registry identity: [`io.github.mayank1307/gitferry`](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.mayank1307%2Fgitferry/versions/0.4.0).
 
 ## Bundle format
 
