@@ -26,6 +26,8 @@ The registry name is `io.github.mayank1307/gitferry`. GitHub OIDC supplies regis
 | GitHub environment | `release` |
 | Allowed actions | Direct publish and stage publish |
 | Configuration ID | `b26ad109-b8af-4bd9-b5a9-b0a39a794063` |
+| Initial status | Pending validation |
+| First-publication deadline | 5 November 2026, 06:33 UTC (12:03 PM IST) |
 
 The publishing job already runs on a GitHub-hosted runner with Node 24, npm 12.2.1, `id-token: write`, and `environment: release`. When an unused version tag is pushed, the workflow runs the six-platform validation matrix, builds the release artifacts, and publishes through npm OIDC. npm issues a short-lived credential for that job; no `NPM_TOKEN` repository secret is required. Stage publication is included by npm; this workflow uses direct publication so a staged-package approval is not part of the normal release path.
 
@@ -41,7 +43,7 @@ If the configuration must be recreated, review any existing trust entry first, t
 npx --yes npm@11.15.0 trust github gitferry --file release.yml --repository mayank1307/gitferry --environment release --allow-publish
 ```
 
-npm may request account 2FA approval when reading or changing trust configurations. The configuration was saved successfully; publishing the next new version is the remaining end-to-end verification. A dry run or retry of the already published v0.4.0 only verifies artifacts and does not test a fresh OIDC publication. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) for provider requirements.
+npm may request account 2FA approval when reading or changing trust configurations. The configuration was saved successfully and read back in npm package settings. npm marks it **pending validation** and requires a first publication before **5 November 2026, 06:33 UTC (12:03 PM IST)** to validate this connection. Publish a reviewed new version before that deadline, or inspect/reconfigure the connection if the deadline is missed. Publishing that new version is the remaining end-to-end verification. A dry run or retry of the already published v0.4.0 only verifies artifacts and does not test a fresh OIDC publication. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) for provider requirements.
 
 ## Verify a candidate locally
 
