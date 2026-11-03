@@ -180,7 +180,10 @@ describe("public bundle safety", () => {
 
   it("serializes repositories across operations and releases locks after errors", async () => {
     const { repo, output } = await bundleFixture();
-    await withRepositoryLock(repo, async () => {
+    // Public operations resolve the Git root before locking. Windows temp paths
+    // can use an 8.3 alias while Git reports the long path for the same directory.
+    const root = g(repo, "rev-parse", "--show-toplevel");
+    await withRepositoryLock(root, async () => {
       await expect(pack({cwd: repo, output})).rejects.toThrow(/another GitFerry operation/);
       await expect(apply({cwd: repo, bundlePath: output, dryRun:true})).rejects.toThrow(/another GitFerry operation/);
     });
