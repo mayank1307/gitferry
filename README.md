@@ -18,6 +18,8 @@ machine A (has your changes)          machine B (same repo, no sync)
 
 See [SCENARIOS.md](SCENARIOS.md) for every situation this is built for — air-gapped environments, client-site work, WIP handoffs, offline review, and more. See [INSTALL.md](INSTALL.md) for offline installation on other devices.
 
+**Quick MCP install** (Claude Code): `claude mcp add --transport stdio gitferry -- npx --yes --package=gitferry@0.4.2 gitferry-mcp`, then restart your client and confirm the `pack_changes`, `inspect_bundle`, and `apply_bundle` tools appear. Codex, VS Code, JSON config, and offline setup are in [MCP server](#mcp-server) below.
+
 ## Why not just `git format-patch` / `git bundle`?
 
 You can — gitferry *uses* them under the hood. What raw git doesn't give you:
