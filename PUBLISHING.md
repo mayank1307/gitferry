@@ -93,6 +93,23 @@ For a defective release, deprecate the affected npm version with a message namin
 
 Registry discoverability does not guarantee placement in individual client directories. Submit directory listings separately after the npm and registry checks pass.
 
+### First-week monitoring and bad-release recovery
+
+For the first week after a release, watch public state so a bad version is caught early:
+
+- **npm:** `npm view gitferry dist-tags` and `npm view gitferry@<version>` — confirm `latest` points at the intended version and the tarball and shasum are present.
+- **Official registry:** the server page shows the new version as `isLatest`.
+- **Clean-machine smoke test:** `npx --yes --package=gitferry@<version> gitferry-mcp` starts and exposes the three tools; `npm install -g gitferry@<version> && gitferry --version` prints the version.
+- **Breakage reports:** GitHub issues and release-asset download counts.
+
+If a released version turns out to be defective, **fix forward — never overwrite a published artifact**:
+
+1. Deprecate the bad version, pointing users at the last good one:
+   `npm deprecate gitferry@<bad-version> "Broken release; pin gitferry@<last-good> until <new-version> ships."`
+2. Keep the known-good pin visible — installation examples already pin an explicit version, so point users there.
+3. Release the fix as a new version through the **Versioned release** flow above: a new npm version, a new (immutable) registry version, and a new GitHub release.
+4. Preserve the bad version's tag, npm tarball, registry record, and GitHub assets as-is. Deprecation removes a version from recommendations without unpublishing it; it does not alter released bytes.
+
 ## Official references
 
 - [MCP Registry quickstart](https://modelcontextprotocol.io/registry/quickstart)
